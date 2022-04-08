@@ -1,5 +1,5 @@
 ;	Author:	Daniele Giuliani
-;	Program:	Simple interface to read the modified SPI protocol
+;	Program:	Interface to interact with the modified SPI protocol
 ;				used by the PSX to communicate with controller/memory cards
 
 .program sel_monitor
@@ -44,8 +44,8 @@ out pindirs 1	; output 1 bit (by changing pin direction)
 .wrap
 
 .program ack_sender
-; completely time-based, running with same clock as PSX protocol (242KHz circa)		TODO UPDATE INFO
-; waits for interrupt from CPU then lowers ACK line for 2 clock cycles				TODO UPDATE INFO
+; Timing is based on first read bit of cmd_reader
+; running with same clock as PSX protocol (242KHz circa)
 .wrap_target
 irq wait 1		[8]	; 8 clocks of delay (+ 1 if instruction itself)
 set pindirs, 1		; keep ack low for more than half PSX clock
@@ -54,7 +54,6 @@ set pindirs, 0
 
 
 % c-sdk {
-#define READ_CLKDIV 58	// with pico default clock (125 Mhz) results in a frequency around 6 time greater than PSX SPI frequnecy
 #define PSX_CLKDIV 515	// with pico default clock (125 Mhz) results in a frequency similar to PSX SPI frequency
 #define ACK_IRQ 1
 
@@ -68,7 +67,6 @@ static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint 
 	pio_set_irq0_source_enabled(pio, pis_interrupt0, true);
 	/* Initialize and enable SM */
 	pio_sm_init(pio, sm, offset, &c);
-	//pio_sm_set_enabled(pio, sm, true);
 }
 
 static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint pin_cmd) {
@@ -84,7 +82,6 @@ static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint p
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);	// join RX FIFO
 	/* Initialize and enable SM */
 	pio_sm_init(pio, sm, offset, &c);
-	//pio_sm_set_enabled(pio, sm, true);
 }
 
 static inline uint8_t read_cmd_byte_blocking(PIO pio, uint sm_cmd_reader) {
@@ -107,7 +104,6 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint p
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);	// join TX FIFO
 	/* Initialize and enable SM */
 	pio_sm_init(pio, sm, offset, &c);
-	//pio_sm_set_enabled(pio, sm, true);
 }
 
 static inline void write_dat_LSB_blocking(PIO pio, uint sm, uint32_t byte) {
@@ -128,7 +124,6 @@ static inline void ack_sender_program_init(PIO pio, uint sm, uint offset, uint p
 	sm_config_set_clkdiv_int_frac(&c, PSX_CLKDIV, 0x00);
 	/* Initialize and enable SM */
 	pio_sm_init(pio, sm, offset, &c);
-	//pio_sm_set_enabled(pio, sm, true);
 }
 
 static inline void send_ack(PIO pio) {

@@ -1,3 +1,11 @@
+/**
+ * @file test.c
+ * @author Daniele Giuliani (danielegiuliani0@gmail.com)
+ * @brief Testing interaction of PIO and PSX by simulating Joypad
+ * @version 0.1
+ * @date 2022-04-08
+ */
+
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
@@ -37,14 +45,13 @@ static uint count = 0;
 
 /**
  * @brief Interrupt handler called when SEL goes high
- * Resets ackSender, cmdReader and datWriter state machines
+ * Resets cmdReader and datWriter state machines
  */
 void pio0_irq0() {
 	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter, false);
 	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter);
     pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
     pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
-    //pio_sm_exec(pio, smAckSender, pio_encode_jmp(offsetAckSender));	// restart smAckSender PC
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter);
 	pio_interrupt_clear(pio0, 0);
 }
@@ -130,18 +137,6 @@ int main() {
 	cmd_reader_program_init(pio, smCmdReader, offsetCmdReader, PIN_CMD);
 	sel_monitor_program_init(pio, smSelMonitor, offsetSelMonitor, PIN_SEL);
 
-	
-	// test attempting to write TX before program is even started
-	// allows us to observe is some iterations are capable of sending stuff
-	/*
-	write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-	write_dat_LSB_blocking(pio, smDatWriter, ID_LO);
-	write_dat_LSB_blocking(pio, smDatWriter, ID_HI);
-	write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-	write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-	*/
-	//write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-
 
 	/* Enable all SM simultaneously */
 	uint32_t smMask = (1 << smSelMonitor) | (1 << smCmdReader) | (1 << smAckSender) | (1 << smDatWriter);
@@ -150,37 +145,10 @@ int main() {
 	uint32_t i = 0;
 	while(true) {
 		uint8_t item = read_cmd_byte_blocking(pio, smCmdReader);
-		//send_ack(pio);
-		/*
-		if(i == 0) {
-			write_dat_LSB_blocking(pio, smDatWriter, ID_LO);
-			write_dat_LSB_blocking(pio, smDatWriter, ID_HI);
-			i++;
-		}
-		*/
-
-		/*
-		switch (item) {
-		case 0x01:
-			write_dat_LSB_blocking(pio, smDatWriter, ID_LO);
-			break;
-		case 0x42:
-			write_dat_LSB_blocking(pio, smDatWriter, ID_HI);
-			break;
-		case 0x00:
-			write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-			break;
-		default:
-			break;
-		}
-		*/
 		
-
 		if(item == 0x01)
 			process_joy_req(item);
 			count = (count + 1) % 4;
 
-			//printf("\n");
-		//printf("%.2x ", item);
 	}
 }
