@@ -11,7 +11,7 @@ add_executable(test)
 
 pico_generate_pio_header(test ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
 
-target_sources(test PRIVATE test.c)
+target_sources(test PRIVATE memcard_simulator.c memory_card.c)
 
 pico_enable_stdio_uart(test 1)	# enable only UART stdio
 

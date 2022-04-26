@@ -50,8 +50,8 @@ static uint count = 0;
 void pio0_irq0() {
 	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter, false);
 	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter);
-    pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
-    pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
+	pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
+	pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter);
 	pio_interrupt_clear(pio0, 0);
 }

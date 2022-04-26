@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "stdio.h": "c",
+        "stdlib.h": "c",
+        "pio.h": "c",
+        "pico.h": "c",
+        "uart.h": "c",
+        "types.h": "c"
+    }
+}

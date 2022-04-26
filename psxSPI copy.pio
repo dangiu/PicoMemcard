@@ -10,7 +10,7 @@ wait 1 pin 0	; wait for initial sync (SEL up)
 wait 0 pin 0	; wait for SEL low
 irq clear 4		; signal other SMs SEL is low
 wait 1 pin 0	; wait for SEL to go HIGH
-irq set 0		; signal CPU that SEL went high
+irq set 0		; signal CPU to reset other SMs
 .wrap
 
 .program cmd_reader
@@ -73,8 +73,6 @@ set pindirs, 0
 #define ACK_CLKDIV 86	// with pico default clock (125 Mhz) results in a frequency around 6 time greater than PSX SPI frequency
 #define ACK_IRQ 1
 
-bool cancel_read = false;
-
 static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint pin_sel) {
 	pio_sm_config c = sel_monitor_program_get_default_config(offset);
 	/* Pin Configuration */
@@ -101,7 +99,6 @@ static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint p
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
-
 static inline void dat_reader_program_init(PIO pio, uint sm, uint offset, uint pin_dat) {
 	pio_sm_config c = dat_reader_program_get_default_config(offset);
 	/* Pin Configuration */
@@ -119,15 +116,6 @@ static inline void dat_reader_program_init(PIO pio, uint sm, uint offset, uint p
 }
 
 static inline uint8_t read_cmd_byte_blocking(PIO pio, uint sm_cmd_reader) {
-    //check_pio_param(pio);
-    //check_sm_param(sm_cmd_reader);
-    //while (pio_sm_is_rx_fifo_empty(pio, sm_cmd_reader)) {
-	//	if(cancel_read)
-	//		*error = true;
-	//		cancel_read = false;
-	//		return 0x00;
-	//}
-	//return (uint8_t) (pio_sm_get(pio, sm_cmd_reader) >> 24);
 	return (uint8_t) (pio_sm_get_blocking(pio, sm_cmd_reader) >> 24);
 }
 
@@ -167,5 +155,9 @@ static inline void ack_sender_program_init(PIO pio, uint sm, uint offset, uint p
 	sm_config_set_clkdiv_int_frac(&c, ACK_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
+}
+
+static inline void send_ack(PIO pio) {
+	pio_interrupt_clear(pio, ACK_IRQ);
 }
 %}
