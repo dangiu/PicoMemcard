@@ -15,6 +15,8 @@
 #define MC_ACK2 0x5D
 
 #define MC_GOOD 0x47
+#define MC_BAD_SEC 0xFF
+#define MC_BAD_CHK 0x4E
 
 typedef struct {
 	uint8_t flag_byte;
