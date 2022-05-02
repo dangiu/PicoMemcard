@@ -41,30 +41,15 @@ MemoryCard mc;
 
 /**
  * @brief Interrupt handler called when SEL goes high
- * Resets cmdReader and datWriter state machines
+ * Resets cmd_reader and dat_wruter state machines
  */
 void pio0_irq0() {
 	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter, false);
 	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter);
 	pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
 	pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
-	cancel_read = true;
 	pio_interrupt_clear(pio0, 0);
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter);
-}
-
-void suspend_proto() {
-	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender, false);
-	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
-}
-
-void restart_proto() {
-	pio_sm_clear_fifos(pio, smCmdReader);
-	pio_sm_clear_fifos(pio, smDatWriter);
-	pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
-	pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
-	pio_sm_exec(pio, smAckSender, pio_encode_jmp(offsetAckSender));	// restart smAckSender
-	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
 }
 
 void cancel_ack() {
@@ -73,63 +58,44 @@ void cancel_ack() {
 
 void process_memcard_read() {
 	uint8_t temp;
-	write_dat_LSB_blocking(pio, smDatWriter, 0x00);	// send filler
+	write_byte_blocking(pio, smDatWriter, 0x00);	// send filler
 	/* read sector number */
-	uint8_t sec_msb = read_cmd_byte_blocking(pio, smCmdReader);
+	uint8_t sec_msb = read_byte_blocking(pio, smCmdReader);
 	
-	write_dat_LSB_blocking(pio, smDatWriter, sec_msb);	// send msb
-	uint8_t sec_lsb = read_cmd_byte_blocking(pio, smCmdReader);
+	write_byte_blocking(pio, smDatWriter, sec_msb);	// send msb
+	uint8_t sec_lsb = read_byte_blocking(pio, smCmdReader);
 
 	/* queue acks */
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ACK1);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+	write_byte_blocking(pio, smDatWriter, MC_ACK1);
+	temp = read_byte_blocking(pio, smCmdReader);
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD ACK1 FILL %.2x\n", temp);
-		printf("\n MSB %.2x   LSB %.2x\n", sec_msb, sec_lsb);
-		restart_proto();
 		return;
 	}
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ACK2);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
 
+	write_byte_blocking(pio, smDatWriter, MC_ACK2);
+	temp = read_byte_blocking(pio, smCmdReader);
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD ACK2 FILL %.2x\n", temp);
-		printf("\n MSB %.2x   LSB %.2x\n", sec_msb, sec_lsb);
-		restart_proto();
 		return;
 	}
 	
 	/* queue sector confirm */
 	if(memory_card_is_sector_valid((uint32_t) sec_msb << 8 | sec_lsb)) {
-		write_dat_LSB_blocking(pio, smDatWriter, sec_msb);
-		temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+		write_byte_blocking(pio, smDatWriter, sec_msb);
+		temp = read_byte_blocking(pio, smCmdReader);
 		if(temp != 0x00) {
-			suspend_proto();
-			printf("\n BAD MSB CONF FILL %.2x\n", temp);
-			restart_proto();
 			return;
 		}
-		write_dat_LSB_blocking(pio, smDatWriter, sec_lsb);
-		temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+		write_byte_blocking(pio, smDatWriter, sec_lsb);
+		temp = read_byte_blocking(pio, smCmdReader);
 		if(temp != 0x00) {
-			suspend_proto();
-			printf("\n BAD LSB CONF FILL %.2x\n", temp);
-			restart_proto();
 			return;
 		}
 	} else {
-		/* SEE WHAT TO DO */
-		//write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-		//write_dat_LSB_blocking(pio, smDatWriter, 0xff);
-		// restart protocol
-		suspend_proto();
-		printf("\nInvalid MC sector: %d\n", (uint32_t) sec_msb << 8 | sec_lsb);
-		restart_proto();
+		/* invalid sector, queue 0xff 0xff and abort transfer */
+		write_byte_blocking(pio, smDatWriter, 0xff);
+		temp = read_byte_blocking(pio, smCmdReader);	// discard cmd
+		write_byte_blocking(pio, smDatWriter, 0xff);
+		temp = read_byte_blocking(pio, smCmdReader);	// discard cmd
 		return;
 	}
 
@@ -138,40 +104,27 @@ void process_memcard_read() {
 	
 	uint8_t checksum = sec_msb ^ sec_lsb;
 	for(uint32_t i = 0; i < MC_SEC_SIZE; ++i) {
-		write_dat_LSB_blocking(pio, smDatWriter, sec_ptr[i]);
-		//write_dat_LSB_blocking(pio, smDatWriter, 0x00);
-		temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+		write_byte_blocking(pio, smDatWriter, sec_ptr[i]);
+		temp = read_byte_blocking(pio, smCmdReader);
 		if(temp != 0x00) {
-			suspend_proto();
-			printf("\n BAD SEC DATA FILL %.2x\n", temp);
-			restart_proto();
 			return;
 		}
+
 		checksum = checksum ^ sec_ptr[i];
-		//checksum = checksum ^ 0x00;
 	}
 	
 	/* queue checksum */
-	write_dat_LSB_blocking(pio, smDatWriter, checksum);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+	write_byte_blocking(pio, smDatWriter, checksum);
+	temp = read_byte_blocking(pio, smCmdReader);
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD CHKSUM FILL %.2x\n", temp);
-		restart_proto();
 		return;
 	}
 
 	/* queue end byte */
-	write_dat_LSB_blocking(pio, smDatWriter, MC_GOOD);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
-	cancel_ack();
-
+	write_byte_blocking(pio, smDatWriter, MC_GOOD);
+	temp = read_byte_blocking(pio, smCmdReader);
+	cancel_ack();	// end-of-protocol, don't need to send more data
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD END BYTE FILL %.2x\n", temp);
-		restart_proto();
 		return;
 	}
 
@@ -181,14 +134,15 @@ void process_memcard_read() {
 
 void process_memcard_write() {
 	uint8_t temp;
-	write_dat_LSB_blocking(pio, smDatWriter, 0x00);	// send filler
-	/* read sector number */
-	uint8_t sec_msb = read_cmd_byte_blocking(pio, smCmdReader);
+	write_byte_blocking(pio, smDatWriter, 0x00);	// send filler
 	
-	write_dat_LSB_blocking(pio, smDatWriter, sec_msb);	// send msb
-	uint8_t sec_lsb = read_cmd_byte_blocking(pio, smCmdReader);
+	/* read sector number */
+	uint8_t sec_msb = read_byte_blocking(pio, smCmdReader);
+	
+	write_byte_blocking(pio, smDatWriter, sec_msb);	// send msb
+	uint8_t sec_lsb = read_byte_blocking(pio, smCmdReader);
 
-	write_dat_LSB_blocking(pio, smDatWriter, sec_lsb);	// queue lsb
+	write_byte_blocking(pio, smDatWriter, sec_lsb);	// queue lsb
 
 	/* receive sector data while performing xor and queueing pre */
 	uint8_t* sec_ptr = memory_card_get_sector_ptr(&mc, (uint32_t) sec_msb << 8 | sec_lsb);
@@ -196,69 +150,110 @@ void process_memcard_write() {
 	uint8_t pre = sec_lsb;
 	uint8_t checksum = sec_msb ^ sec_lsb;
 	for(uint32_t i = 0; i < MC_SEC_SIZE; ++i) {
-		sec_ptr[i] = read_cmd_byte_blocking(pio, smCmdReader);
-		write_dat_LSB_blocking(pio, smDatWriter, sec_ptr[i]);
-		checksum = checksum ^ sec_ptr[i];
+		temp = read_byte_blocking(pio, smCmdReader);
+		write_byte_blocking(pio, smDatWriter, temp);
+		checksum = checksum ^ temp;
+
+		if(memory_card_is_sector_valid((uint32_t) sec_msb << 8 | sec_lsb)) {	// save sector data only if sector address is valid
+			sec_ptr[i] = temp;
+		}
 	}
 
-	uint8_t chk = read_cmd_byte_blocking(pio, smCmdReader);
-
-	if(chk != checksum) {
-		printf("CHECKSUM Received: %.2x\tCalculated: %.2x", chk, checksum);
-		// TODO change and implement the send of the correct answer
-	}
+	/* read checksum */
+	uint8_t chk = read_byte_blocking(pio, smCmdReader);
 
 	/* queue acks */
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ACK1);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
-
+	write_byte_blocking(pio, smDatWriter, MC_ACK1);
+	temp = read_byte_blocking(pio, smCmdReader);
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD ACK1 FILL %.2x\n", temp);
-		printf("\n MSB %.2x   LSB %.2x\n", sec_msb, sec_lsb);
-		restart_proto();
 		return;
 	}
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ACK2);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
 
+	write_byte_blocking(pio, smDatWriter, MC_ACK2);
+	temp = read_byte_blocking(pio, smCmdReader);
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD ACK2 FILL %.2x\n", temp);
-		printf("\n MSB %.2x   LSB %.2x\n", sec_msb, sec_lsb);
-		restart_proto();
 		return;
 	}
 
 	/* queue end byte */
-	write_dat_LSB_blocking(pio, smDatWriter, MC_GOOD);
-	temp = read_cmd_byte_blocking(pio, smCmdReader);
-	cancel_ack();
-
+	if(!memory_card_is_sector_valid((uint32_t) sec_msb << 8 | sec_lsb)) {	// invalid sector, write not performed
+		write_byte_blocking(pio, smDatWriter, MC_BAD_SEC);
+	} else if(chk != checksum) {	// bad checksum, write might be corrupted
+		write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
+	} else {	// write performed, no errors
+		write_byte_blocking(pio, smDatWriter, MC_GOOD);
+	}
+	temp = read_byte_blocking(pio, smCmdReader);
+	cancel_ack();	// end-of-protocol, don't need to send more data
 	if(temp != 0x00) {
-		suspend_proto();
-		printf("\n BAD END BYTE FILL %.2x\n", temp);
-		restart_proto();
 		return;
 	}
 
-	memory_card_reset_seen_flag(&mc);
+	memory_card_reset_seen_flag(&mc);	// when first write is performed, reset the "is-new" flag of memory card
 	printf("WRITE  %.2x%.2x\n", sec_msb, sec_lsb);
+	return;
+}
+
+
+void process_memcard_id() {
+	uint8_t temp;
+	
+	/* queue acks */
+	write_byte_blocking(pio, smDatWriter, MC_ACK1);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+
+	write_byte_blocking(pio, smDatWriter, MC_ACK2);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+
+	/* queue ID sequence */
+	write_byte_blocking(pio, smDatWriter, 0x04);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+
+	write_byte_blocking(pio, smDatWriter, 0x00);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+
+	write_byte_blocking(pio, smDatWriter, 0x00);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+
+	write_byte_blocking(pio, smDatWriter, 0x80);
+	temp = read_byte_blocking(pio, smCmdReader);
+	if(temp != 0x00) {
+		return;
+	}
+	cancel_ack();	// end-of-protocol, don't need to send more data
+
+	printf("ID\n");
 	return;
 }
 
 void process_memcard_req() {
 	bool error = false;
-	write_dat_LSB_blocking(pio, smDatWriter, mc.flag_byte);	// queue MC flag
-	uint8_t memcard_cmd = read_cmd_byte_blocking(pio, smCmdReader);
+	write_byte_blocking(pio, smDatWriter, mc.flag_byte);	// queue MC flag
+	uint8_t memcard_cmd = read_byte_blocking(pio, smCmdReader);
+	
 	/* queue MC ID bytes */
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ID1);
-	uint8_t d1 = read_cmd_byte_blocking(pio, smCmdReader);	// discard received filler bytes
+	write_byte_blocking(pio, smDatWriter, MC_ID1);
+	uint8_t fill1 = read_byte_blocking(pio, smCmdReader);
 
-	write_dat_LSB_blocking(pio, smDatWriter, MC_ID2);
-	uint8_t d2 = read_cmd_byte_blocking(pio, smCmdReader);	// discard received filler bytes
+	write_byte_blocking(pio, smDatWriter, MC_ID2);
+	uint8_t fill2 = read_byte_blocking(pio, smCmdReader);
 
-	if(d1 != 0x00 || d2 != 0x00) {	// filler is wrong restart protocol (SM)
+	if(fill1 != 0x00 || fill2 != 0x00) {	// filler is wrong abort protocol
 		return;
 	}
 
@@ -269,8 +264,11 @@ void process_memcard_req() {
 		case MEMCARD_WRITE:
 			process_memcard_write();
 			break;
+		case MEMCARD_ID:
+			process_memcard_id();
+			break;
 		default:
-			printf("\nMC CMD: %.2x\n", memcard_cmd);
+			printf("\nUnknown MC CMD: %.2x\n", memcard_cmd);
 			break;
 	}
 
@@ -309,7 +307,7 @@ int main() {
 	pio_enable_sm_mask_in_sync(pio, smMask);
 
 	while(true) {
-		uint8_t item = read_cmd_byte_blocking(pio, smCmdReader);
+		uint8_t item = read_byte_blocking(pio, smCmdReader);
 		if(item == MEMCARD_TOP) {
 			process_memcard_req(item);
 		} else {

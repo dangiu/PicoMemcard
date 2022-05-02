@@ -1,10 +1,13 @@
 ;	Author:	Daniele Giuliani
-;	Program:	Interface to interact with the modified SPI protocol
-;				used by the PSX to communicate with controller/memory cards
+;	Interfaces with the modified SPI protocol used by
+;	PSX to communicate with controller/memory cards
 
 .program sel_monitor
 ; Input pins mapping:
 ;	0 - SEL
+; Program description:
+;	Monitors SEL line, singnals other SM to start execution when SEL goes low
+;	generates interrupt signaling CPU to reset SMs when SEL goes high
 wait 1 pin 0	; wait for initial sync (SEL up)
 .wrap_target
 wait 0 pin 0	; wait for SEL low
@@ -18,13 +21,16 @@ irq set 0		; signal CPU that SEL went high
 ;	0 - CMD
 ;	1 - SEL (not used)
 ;	2 - CLK
+; Program description:
+;	Samples CMD line during rising clock edges,
+;	waits for sel_monitor signal before starting execution
 sel_high:
 irq wait 4		; wait for SEL monitor to signal SM start
 .wrap_target
 wait 0 pin 2	; wait for clock to fall
 wait 1 pin 2	; wait for rising clock edge
 in pins 1		; sample 1 bit form CMD line
-irq clear 1		; signal ACK timer to start TODO TEST
+irq clear 1		; signal ACK timer to start
 .wrap
 
 .program dat_reader
@@ -33,6 +39,10 @@ irq clear 1		; signal ACK timer to start TODO TEST
 ;	1 - CMD (not used)
 ;	2 - SEL (not used)
 ;	3 - CLK
+; Program description:
+;	Samples DAT line during rising clock edges,
+;	waits for sel_monitor signal before starting execution.
+;	Can be used for sniffing DAT line used by other hardware
 sel_high:
 irq wait 4		; wait for SEL monitor to signal SM start
 .wrap_target
@@ -48,6 +58,12 @@ in pins 1		; sample 1 bit form DAT line
 ;	0 - DAT
 ; Input pins mapping:
 ;	0 - CLK
+; Program description:
+;	Outputs bits to the DAT line on falling clock edges.
+;	waits for sel_monitor signal before starting execution.
+;	Bits are outputted by changing pin direction:
+;	0 -> set pin as input (Hi-Z) -> output a one
+;	1 -> set pin as output low -> output a zero
 set pindirs, 0	; release DAT line (set pin as input = Hi-Z)
 irq wait 4		; wait for SEL monitor to signal SM start
 pull			; manual pull in order to stall SM if TX fifo is empty
@@ -58,8 +74,11 @@ out pindirs 1	; output 1 bit (by changing pin direction)
 .wrap
 
 .program ack_sender
-; Timing is based on first read bit of cmd_reader
-; running with same clock as PSX protocol (242KHz circa)
+; Set pins mapping:
+;	0 - ACK
+; Program description:
+;	Sets ACK line low, waits for irq 1 to be lowered by cmd_reader.
+;	Timing is based on the first bit read by cmd_reader.
 .wrap_target
 irq wait 1		[31]	; 32 cycles delay (1 for instruction)
 nop	[23]				; 24 cycles delay (1 for instruction), total of 56 cycles
@@ -69,11 +88,8 @@ set pindirs, 0
 
 
 % c-sdk {
-#define PSX_CLKDIV 515	// with pico default clock (125 Mhz) results in a frequency similar to PSX SPI frequency
 #define ACK_CLKDIV 86	// with pico default clock (125 Mhz) results in a frequency around 6 time greater than PSX SPI frequency
 #define ACK_IRQ 1
-
-bool cancel_read = false;
 
 static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint pin_sel) {
 	pio_sm_config c = sel_monitor_program_get_default_config(offset);
@@ -118,16 +134,7 @@ static inline void dat_reader_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_init(pio, sm, offset, &c);
 }
 
-static inline uint8_t read_cmd_byte_blocking(PIO pio, uint sm_cmd_reader) {
-    //check_pio_param(pio);
-    //check_sm_param(sm_cmd_reader);
-    //while (pio_sm_is_rx_fifo_empty(pio, sm_cmd_reader)) {
-	//	if(cancel_read)
-	//		*error = true;
-	//		cancel_read = false;
-	//		return 0x00;
-	//}
-	//return (uint8_t) (pio_sm_get(pio, sm_cmd_reader) >> 24);
+static inline uint8_t read_byte_blocking(PIO pio, uint sm_cmd_reader) {
 	return (uint8_t) (pio_sm_get_blocking(pio, sm_cmd_reader) >> 24);
 }
 
@@ -149,7 +156,7 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_init(pio, sm, offset, &c);
 }
 
-static inline void write_dat_LSB_blocking(PIO pio, uint sm, uint32_t byte) {
+static inline void write_byte_blocking(PIO pio, uint sm, uint32_t byte) {
 	byte = ~byte & (0x000000ff);	// invert single bit values and mask off
 									// 0s must become ones in order to set pins to output a low signal
 									// 1s must be zeros to set pin to input creating a high-z state
