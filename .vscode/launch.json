@@ -12,8 +12,8 @@
             "type": "cortex-debug",
             "servertype": "openocd",
             "configFiles": [
-                "interface/cmsis-dap.cfg",
-                "target/rp2040-core0.cfg"
+                "interface/picoprobe.cfg",
+                "target/rp2040.cfg"
             ],
             "openOCDLaunchCommands": [
                 "transport select swd",
