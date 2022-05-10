@@ -7,7 +7,7 @@
             "gdbPath": "gdb-multiarch",
             "cwd": "${workspaceRoot}",
             "executable": "${workspaceRoot}/build/test.elf",
-            "preLaunchTask": "${defaultBuildTask}",
+            "preLaunchTask": "build",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",

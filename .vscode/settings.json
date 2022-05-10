@@ -5,6 +5,12 @@
         "pio.h": "c",
         "pico.h": "c",
         "uart.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "tusb.h": "c",
+        "board.h": "c",
+        "tusb_common.h": "c",
+        "tusb_option.h": "c",
+        "ansi_escape.h": "c",
+        "tusb_compiler.h": "c"
     }
 }
