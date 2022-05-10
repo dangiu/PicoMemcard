@@ -9,12 +9,35 @@ pico_sdk_init()
 
 add_executable(test)
 
+pico_set_linker_script(test ${CMAKE_SOURCE_DIR}/memmap.ld)
 pico_generate_pio_header(test ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
 
-target_sources(test PRIVATE memcard_simulator.c memory_card.c)
+
+# Example source
+target_sources(test PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/lfs_disk.c
+    ${CMAKE_SOURCE_DIR}/src/lfs_flash_handler.c
+    ${CMAKE_SOURCE_DIR}/src/main.c
+    ${CMAKE_SOURCE_DIR}/src/memcard_simulator.c
+    ${CMAKE_SOURCE_DIR}/src/memory_card.c
+    ${CMAKE_SOURCE_DIR}/src/msc_handler.c
+    ${CMAKE_SOURCE_DIR}/src/ram_disk.c
+    ${CMAKE_SOURCE_DIR}/src/usb_descriptors.c
+    ${CMAKE_SOURCE_DIR}/ff14b/source/diskio.c
+    ${CMAKE_SOURCE_DIR}/ff14b/source/ff.c
+    ${CMAKE_SOURCE_DIR}/littlefs/lfs.c
+    ${CMAKE_SOURCE_DIR}/littlefs/lfs_util.c
+)
+
+# Example include
+target_include_directories(test PUBLIC
+    ${CMAKE_SOURCE_DIR}/inc
+    ${CMAKE_SOURCE_DIR}/ff14b/source
+    ${CMAKE_SOURCE_DIR}/littlefs
+)
 
 pico_enable_stdio_uart(test 1)	# enable only UART stdio
 
-pico_add_extra_outputs(test)
+target_link_libraries(test pico_stdlib pico_time hardware_flash hardware_pio tinyusb_device tinyusb_board)
 
-target_link_libraries(test pico_stdlib hardware_pio)
+pico_add_extra_outputs(test)

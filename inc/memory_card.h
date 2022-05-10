@@ -13,6 +13,7 @@
 #define MC_ID2 0x5D
 #define MC_ACK1 0x5C
 #define MC_ACK2 0x5D
+#define MC_TEST_SEC 0x3f	// sector 63 is the "write test" sector
 
 #define MC_GOOD 0x47
 #define MC_BAD_SEC 0xFF
@@ -21,13 +22,16 @@
 typedef struct {
 	uint8_t flag_byte;
 	uint8_t data[MC_SIZE];
+	bool out_of_sync;
+	uint32_t last_operation_timestamp;
 } MemoryCard;
 
 uint32_t memory_card_init(MemoryCard* mc);
 bool memory_card_is_sector_valid(MemoryCard* mc, uint32_t sector);
-//uint32_t memory_card_read_sector(MemoryCard* mc, uint32_t sector, uint8_t* buffer);
-//uint32_t memory_card_write_sector(MemoryCard* mc, uint32_t sector, uint8_t* buffer);
 uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
+void memory_card_set_sync(MemoryCard* mc, bool out_of_sync);
+bool memory_card_get_sync(MemoryCard* mc);
+void memory_card_update_timestamp(MemoryCard* mc);
 uint32_t memory_card_sync(MemoryCard* mc);
 uint32_t memory_card_reset_seen_flag(MemoryCard* mc);
 

@@ -33,9 +33,6 @@ uint offsetCmdReader;
 uint offsetDatWriter;
 uint offsetAckSender;
 
-bool written_since_last_sync;
-uint32_t last_operation_timestamp;
-
 /**
  * @brief Interrupt handler called when SEL goes high
  * Resets cmd_reader and dat_wruter state machines
@@ -127,7 +124,7 @@ void process_memcard_read(MemoryCard* mc) {
 		return;
 	}
 
-	last_operation_timestamp = to_ms_since_boot(get_absolute_time());
+	memory_card_update_timestamp(mc);
 	printf("READ  %.2x%.2x\n", sec_msb, sec_lsb);
 	return;
 }
@@ -190,8 +187,10 @@ void process_memcard_write(MemoryCard* mc) {
 	}
 
 	memory_card_reset_seen_flag(mc);	// when first write is performed, reset the "is-new" flag of memory card
-	written_since_last_sync = true;
-	last_operation_timestamp = to_ms_since_boot(get_absolute_time());
+	if((uint32_t) sec_msb << 8 | sec_lsb != MC_TEST_SEC) {
+		memory_card_set_sync(mc, true);
+	}
+	memory_card_update_timestamp(mc);
 	printf("WRITE  %.2x%.2x\n", sec_msb, sec_lsb);
 	return;
 }
@@ -240,7 +239,7 @@ void process_memcard_id(MemoryCard* mc) {
 	}
 	cancel_ack();	// end-of-protocol, don't need to send more data
 
-	last_operation_timestamp = to_ms_since_boot(get_absolute_time());
+	memory_card_update_timestamp(mc);
 	printf("ID\n");
 	return;
 }
@@ -317,11 +316,11 @@ int simulate_memory_card() {
 		} else {
 			cancel_ack();
 		}
-		if(written_since_last_sync) {
-			if(to_ms_since_boot(get_absolute_time()) - last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
+		if(mc.out_of_sync) {
+			if(to_ms_since_boot(get_absolute_time()) - mc.last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
 				printf("SYNC	");
 				if(0 == memory_card_sync(&mc)) {
-					written_since_last_sync = false;	// sync performed succesfully, reset flag
+					memory_card_set_sync(&mc, false);
 					printf("OK\n");
 				} else {
 					printf("FAIL\n");
