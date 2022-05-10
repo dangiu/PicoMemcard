@@ -3,3 +3,6 @@ build/
 
 # Cortex-Debug extension debug artifacts
 .vscode/.cortex*
+
+# FatFS documentation
+ff14b/documents
