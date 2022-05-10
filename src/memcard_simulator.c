@@ -1,12 +1,10 @@
 #include "memcard_simulator.h"
 #include "stdio.h"
 #include "pico/stdlib.h"
-#include "pico/time.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
-#include "mc_raw.h"
 
 #define PIN_DAT 5
 #define PIN_CMD 6
