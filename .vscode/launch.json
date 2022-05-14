@@ -2,11 +2,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Test",
+            "name": "PicoMemcard",
             "device": "RP2040",
             "gdbPath": "gdb-multiarch",
             "cwd": "${workspaceRoot}",
-            "executable": "${workspaceRoot}/build/test.elf",
+            "executable": "${workspaceRoot}/build/PicoMemcard.elf",
             "preLaunchTask": "build",
             "request": "launch",
             "type": "cortex-debug",

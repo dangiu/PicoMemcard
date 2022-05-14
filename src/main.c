@@ -19,7 +19,6 @@
 #define TUD_MOUNT_TIMEOUT	3000	// max time (in ms) before giving up on MSC mode and starting memcard simulation
 bool tud_mount_status = false;
 
-void led_blinking_task(void);
 void cdc_task(void);
 
 /*------------- MAIN -------------*/
