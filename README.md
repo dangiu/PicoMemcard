@@ -79,7 +79,7 @@ For people interested in underestanding how PicoMemcard works I provide a more e
 [ChaN FatFS]: http://elm-chan.org/fsw/ff/00index_e.html
 [Scoppy]: https://github.com/fhdm-dev/scoppy
 [PulseView]: https://sigrok.org/wiki/PulseView
-[release]: https://TODO_ADD_LINK_TO_RELEASE
+[release]: https://github.com/dangiu/PicoMemcard/releases/latest
 [this post]: https://dangiu.github.io/2022/05/13/picomemcard.html
 
 
