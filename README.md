@@ -21,7 +21,7 @@ Basically anything that will allow you to interface with the memory card slot pi
 In total building a PicoMemcard wil cost you less than buying an used original Memory Card!
 
 ## How it works
-TODO insert video
+[![PicoMemcard Tutorial](https://img.youtube.com/vi/A49-PsrNzP0/0.jpg)](https://www.youtube.com/watch?v=A49-PsrNzP0)
 
 ## Wiring
 The wiriting diagram below shows how to wire the Pi Pico and a counterfit memory card from Aliexpress. For the other cases (wiring directly to the PSX or using a controller cable) the pins on the Pico are the same, the pinout of the PSX/controller can be found on [psx-spx]. The image shows the bottom side of the memory card with the cover removed.
@@ -44,6 +44,8 @@ As of the current release, uploading data to PicoMemcard requires some precises 
 * The image of the memory card to upload must be called exactly `MEMCARD.MCR`. Uploading anything else will not result in any errors but PicoMemcard will not save the uploaded data to flash, after rebooting the device the old data will still be present.
 * The image must be 128KB (131072 bytes) in size which is precisely the size of an original Memory Card.
 * After the image has been uploaded, the device **must be safely ejected** in order for the data to be actually imported correctly. This is a limitation of the current implementation (see Design section).
+
+Inside `docs/images` you can find a couple of memory card images. One has a couple of saves on it so you can test if everything works correctly, the other is completely empty.
 
 **ATTENTION:**
 I would recommend to never plug the PicoMemcard both into the PC (via USB) and the PSX at the same time! Otherwise the 5V provided by USB would end up on the 3.3V rail of the PSX. I'm not really sure if this could cause actual damage but I would avoid it.
@@ -85,9 +87,4 @@ For people interested in underestanding how PicoMemcard works I provide a more e
 TODO
 Add FAQ? Is it necessary?
 Add Changelog
-
-- How it works (video) (ephatize USB removal)
-- add photo of wiring + "do as I say not as I do"
-- upload an empty/test memory card image? or does the PSX format it when not recognized? Check in memcard bios utility and also in games to see what happens
-
 -->
