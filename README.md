@@ -20,8 +20,8 @@ Basically anything that will allow you to interface with the memory card slot pi
 
 In total building a PicoMemcard wil cost you less than buying an used original Memory Card!
 
-## How it works
-[![PicoMemcard Tutorial](https://img.youtube.com/vi/A49-PsrNzP0/0.jpg)](https://www.youtube.com/watch?v=A49-PsrNzP0)
+## Video
+[![PicoMemcard](https://img.youtube.com/vi/Sie0kzmnJJw/0.jpg)](https://www.youtube.com/watch?v=Sie0kzmnJJw)
 
 ## Wiring
 The wiriting diagram below shows how to wire the Pi Pico and a counterfit memory card from Aliexpress. For the other cases (wiring directly to the PSX or using a controller cable) the pins on the Pico are the same, the pinout of the PSX/controller can be found on [psx-spx]. The image shows the bottom side of the memory card with the cover removed.
