@@ -97,7 +97,7 @@ uint32_t RAM_disk_import_lfs_memcard() {
 		1,  // number of FAT copies
 		1,  // data alignment (in sectors)
 		0,  // number of root dir entires (default 512)
-		0   // cluster size (default, use whatever disk uses)
+		0   // cluster size (let FatFS decide)
 	};
 
 	if(FR_OK == f_mkfs("", &opt, working_buffer, WORK_BUFF_SIZE)) {

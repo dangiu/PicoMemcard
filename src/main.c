@@ -42,7 +42,7 @@ int main(void) {
 		tud_task(); // tinyusb device task
 		cdc_task();
 
-		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status )
+		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status)
 			break;
 	}
 		
