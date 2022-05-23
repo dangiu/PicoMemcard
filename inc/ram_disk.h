@@ -6,7 +6,7 @@
 
 #define VOLUME_LABEL "Pico MC"
 
-#define DISK_BLOCK_NUM 353	 // results in 128KB ram disk (some blocks are lost due to FAT12 overhead)
+#define DISK_BLOCK_NUM 357	// results in ~128KB ram disk (some blocks are lost to FAT overhead, some due to Windows Storage Service)
 #define DISK_BLOCK_SIZE 512
 #define SECTOR_NUM DISK_BLOCK_NUM
 #define SECTOR_SIZE DISK_BLOCK_SIZE
