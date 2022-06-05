@@ -11,8 +11,8 @@ PicoMemcard allows you to build your own supercharged PSX Memory Card that can b
 ## Bills of materials
 * **Raspberry Pi Pico** (around ~5$)
 * One of:
-    * Custom PicoMemcard PCB (*currently work in progress*)
-    * Broken/Counterfit/Original PSX Memory Card (counterfit ones can be found on Aliexpress for less than 1$)
+    * Custom [PicoMemcard PCB](#picomemcard-pcb)
+    * Broken/Counterfit/Original PSX Memory Card (counterfit ones can be found on Aliexpress for around 2-3$)
     * PSX/PS2 Controller Cable
     * Nothing, if you are a mad man and feel like soldering cables directly to your PSX (would not recommend).
 
@@ -22,6 +22,23 @@ In total building a PicoMemcard wil cost you less than buying an used original M
 
 ## Video
 [![PicoMemcard](https://img.youtube.com/vi/Sie0kzmnJJw/0.jpg)](https://www.youtube.com/watch?v=Sie0kzmnJJw)
+
+## PicoMemcard PCB
+<img src="./docs/PCBs.jpg" alt="Custom PCBs" width="800">
+
+This is the custom PCB designed and manufactured specifically for this application. It makes it much easier to build PicoMemcard since you don't need to cut up another memory card and all the soldering pads are easily accessible. Still, you will need a soldering iron to assemble the device.
+
+The Raspberry Pi Pico must sit flush on top of the PCB, use the soldering pads instead of the through-holes (see right side of the picture). Personally, I used a couple of instant-glue drops to fix it in place and then soldered the different pads.
+
+I've designed the PCB with a bit of future-proofeness in mind. Although not yet implemented, it supports the installation of an SD SPI expansion board to allow the Pico to read/write data to a microSD card and store multiple memory card image (see [Future Development](#future-development) section).
+
+Since I've already received so many requests and I'm starting to lose track of them, I created a Google Form where you can [request one]. It also allows me to understand how many PCBs I should manufacture. If you do request one, make sure to specify a way for me to contact you back in order to get shipping information and stuff.
+
+Before filling the form, keep in mind that the cheapest way to build PicoMemcard is using a counterfit memory card. The PCB will cost between 3-8€ (depends on how many units are manufactured in a single order so it changes from batch to batch), plus shipping costs (around 1-2€ for EU, 2-3€ for the rest of the world expect Australia and a few places which costs around 4€).
+
+<img src="./docs/PCB-Demo.jpg" alt="Custom PCB in use" width="800">
+
+In the picture above you can see the PCB plugged into a PSOne. I'm already working on a 3d-printed enclosure instead of using paper sheets as a spacer.
 
 ## Wiring
 The wiriting diagram below shows how to wire the Pico and a counterfit memory card from Aliexpress. For the other cases (wiring directly to the PSX or using a controller cable) the pins on the Pico are the same, the pinout of the PSX/controller can be found on [psx-spx]. The image shows the bottom side of the memory card with the cover removed.
@@ -81,6 +98,7 @@ For people interested in underestanding how PicoMemcard works I provide a more e
 [PulseView]: https://sigrok.org/wiki/PulseView
 [release]: https://github.com/dangiu/PicoMemcard/releases/latest
 [this post]: https://dangiu.github.io/2022/05/13/picomemcard.html
+[request one]: https://forms.gle/f6XHtz6W5fn5qDZV7
 
 
 <!-- 
