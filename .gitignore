@@ -6,3 +6,6 @@ build/
 
 # FatFS documentation
 ff14b/documents
+
+# Environment specific C/C++ configs
+.vscode/c_cpp_properties.json
