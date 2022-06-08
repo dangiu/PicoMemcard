@@ -3,7 +3,8 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "/home/darren/repos/pico-sdk/**"
             ],
             "defines": [],
             "compilerPath": "/bin/arm-none-eabi-gcc",

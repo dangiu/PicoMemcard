@@ -3,7 +3,6 @@
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
-#include "bsp/board.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
 
@@ -277,23 +276,12 @@ void process_memcard_req(MemoryCard* mc) {
 	return;
 }
 
-void blink_led() {
-	board_led_on();
-	sleep_ms(250);
-	board_led_off();
-	sleep_ms(250);
-}
-
 int simulate_memory_card() {
 	MemoryCard mc;
 
-	if(0 == memory_card_init(&mc)) {
-		board_led_on();
-	} else {
-		/* Blink LED forever */
-		while (true) {
-			blink_led();
-		}
+	if(memory_card_init(&mc) != 0) {
+		printf("Error initialising memory card simulation\n");
+        return 1;
 	}
 
 	printf("\n\nInitializing memory card simulation...\n");
