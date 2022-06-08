@@ -16,7 +16,10 @@ int main(void) {
 
 	// Mount the SD card
 	sd_card_t *pSD = sd_get_by_num(0);
-	f_mount(&pSD->fatfs, "", 1);
+	if (f_mount(&pSD->fatfs, "", 1) != FR_OK) {
+		printf("Error mounting SD card.\n");
+		while (1) { }
+	}
 	
 	simulate_memory_card();
 
