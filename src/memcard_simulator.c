@@ -321,7 +321,7 @@ int simulate_memory_card() {
 	/* Enable all SM simultaneously */
 	uint32_t smMask = (1 << smSelMonitor) | (1 << smCmdReader) | (1 << smAckSender) | (1 << smDatWriter);
 	pio_enable_sm_mask_in_sync(pio, smMask);
-
+	
 	while(true) {
 		uint8_t item = read_byte_blocking(pio, smCmdReader);
 		if(item == MEMCARD_TOP) {
