@@ -157,8 +157,7 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint p
 	/* FIFO Configuration */
 	sm_config_set_out_shift(&c, true, true, 8);		// shift OSR to right, autopull every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);	// join TX FIFO
-	/* Clock Configuration */
-	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
+	
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }

@@ -38,6 +38,6 @@ target_include_directories(PicoMemcard PUBLIC
 
 pico_enable_stdio_uart(PicoMemcard 1)	# enable only UART stdio
 
-target_link_libraries(PicoMemcard pico_stdlib pico_time hardware_flash hardware_pio tinyusb_device tinyusb_board)
+target_link_libraries(PicoMemcard pico_stdlib pico_time pico_multicore hardware_flash hardware_pio tinyusb_device tinyusb_board)
 
 pico_add_extra_outputs(PicoMemcard)

@@ -1,6 +1,7 @@
 #include "memcard_simulator.h"
 #include "stdio.h"
 #include "pico/stdlib.h"
+#include "pico/multicore.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "bsp/board.h"
@@ -32,11 +33,16 @@ uint offsetCmdReader;
 uint offsetDatWriter;
 uint offsetAckSender;
 
+MemoryCard mc;
+
+void memcard_sim_thread();
+
 /**
  * @brief Interrupt handler called when SEL goes high
  * Resets cmd_reader and dat_wruter state machines
  */
 void pio0_irq0() {
+	multicore_reset_core1();
 	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter, false);
 	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter);
 	pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
@@ -45,6 +51,7 @@ void pio0_irq0() {
 	pio_sm_clear_fifos(pio, smDatWriter);
 	pio_interrupt_clear(pio0, 0);
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter);
+	multicore_launch_core1(memcard_sim_thread);
 }
 
 void cancel_ack() {
@@ -284,9 +291,18 @@ void blink_led() {
 	sleep_ms(250);
 }
 
-int simulate_memory_card() {
-	MemoryCard mc;
+void memcard_sim_thread() {
+	while(true) {
+		uint8_t item = read_byte_blocking(pio, smCmdReader);
+		if(item == MEMCARD_TOP) {
+			process_memcard_req(&mc);
+		} else {
+			cancel_ack();
+		}
+	}
+}
 
+int simulate_memory_card() {
 	if(0 == memory_card_init(&mc)) {
 		board_led_on();
 	} else {
@@ -321,14 +337,10 @@ int simulate_memory_card() {
 	/* Enable all SM simultaneously */
 	uint32_t smMask = (1 << smSelMonitor) | (1 << smCmdReader) | (1 << smAckSender) | (1 << smDatWriter);
 	pio_enable_sm_mask_in_sync(pio, smMask);
-	
+
+	multicore_launch_core1(memcard_sim_thread);
+
 	while(true) {
-		uint8_t item = read_byte_blocking(pio, smCmdReader);
-		if(item == MEMCARD_TOP) {
-			process_memcard_req(&mc);
-		} else {
-			cancel_ack();
-		}
 		if(mc.out_of_sync) {
 			if(to_ms_since_boot(get_absolute_time()) - mc.last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
 				printf("SYNC	");
