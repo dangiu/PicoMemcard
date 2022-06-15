@@ -14,7 +14,7 @@
 #include "ram_disk.h"
 #include "lfs_disk.h"
 /* Memcard Simulation */
-#include "memcard_simulator.h"
+#include "memcard_simulator_sm.h"
 
 #define TUD_MOUNT_TIMEOUT	3000	// max time (in ms) before giving up on MSC mode and starting memcard simulation
 bool tud_mount_status = false;
@@ -47,7 +47,7 @@ int main(void) {
 	}
 		
 	/* Pico powered by PSX, initialize memory card simulation */
-	simulate_memory_card();	
+	simulate_memory_card_sm();	
 
 	return 0;
 }

@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include "memcard_simulator_sm.h"
 #include "pico/stdlib.h"
-#include "pico/multicore.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "bsp/board.h"
@@ -37,9 +36,13 @@ enum memcard_states {
 };
 
 uint8_t current_state = MC_IDLE;
+uint8_t next_state = MC_IDLE;
 uint8_t command_state = MC_IDLE;
+uint8_t checksum = 0x00;
+uint8_t recv_checksum = 0x00;
 uint8_t sm_byte_counter = 0;
 uint8_t sm_address = 0x00;
+uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
 
 PIO pio = pio0;
 
@@ -67,9 +70,12 @@ void pio0_irq0() {
 
     // Reset mc state machine
     current_state = MC_IDLE;
+    next_state = MC_IDLE;
     command_state = MC_IDLE;
     sm_byte_counter = 0;
     sm_address = 0x00;
+    checksum = 0x00;
+    recv_checksum = 0x00;
 }
 
 void cancel_ack() {
@@ -111,20 +117,25 @@ void blink_led() {
 
 void state_machine_tick(uint8_t data) {
     bool valid_command = false;
-    uint8_t checksum = 0x00;
+    current_state = next_state;
 
     switch(current_state) {
-        case MC_IDLE:
+        case MC_IDLE: // idle / sleeping
             sm_byte_counter = 0;
             command_state = MC_IDLE;
             checksum = 0x00;
+            recv_checksum = 0x00;
+            sm_address = 0x00;
+            next_state = MC_IDLE;
             if (data == MEMCARD_WAKE) {
                 // Send flag byte and start transaction
                 write_byte_blocking(pio0, smDatWriter, mc.flag_byte);
-                current_state = MC_COMMAND;
+                next_state = MC_COMMAND;
+            } else {
+                cancel_ack();
             }
         break;
-        case MC_COMMAND:
+        case MC_COMMAND: // received a wake up byte, wait for command
             switch(data) {
                 case MEMCARD_READ:
                     valid_command = true;
@@ -140,31 +151,34 @@ void state_machine_tick(uint8_t data) {
                 break;
                 default:
                     valid_command = false;
-                    current_state = MC_IDLE;
+                    next_state = MC_IDLE;
                 break;
             }
             if (valid_command) {
                 valid_command = false;
-                current_state = MC_SEND_ID;
+                next_state = MC_SEND_ID;
                 write_byte_blocking(pio, smDatWriter, MC_ID1);
             }
         break;
         case MC_SEND_ID:
             if (command_state == MC_EXECUTE_ID) {
                 // ID doesn't need to receive an address
-                current_state = command_state;
+                next_state = command_state;
             } else {
-                current_state = MC_RECV_ADDR;
+                next_state = MC_RECV_ADDR;
             }
-            write_byte_blocking(pio, smDatWriter, MC_ID1);
+            write_byte_blocking(pio, smDatWriter, MC_ID2);
         break;
-        case MC_RECV_ADDR:
-            if (sm_byte_counter == 0) {
+        case MC_RECV_ADDR: // receive the address
+            if (sm_byte_counter++ < 2) {
+                // Filler
+                write_byte_blocking(pio, smDatWriter, 0x00);
+            } else if (sm_byte_counter == 2) {
                 // MSB
                 sm_address = data << 8;
                 // Send MSB
                 write_byte_blocking(pio, smDatWriter, data);
-            } else {
+            } else if (sm_byte_counter == 3) {
                 // LSB
                 sm_address |= data;
                 if(command_state == MC_EXECUTE_READ) {
@@ -174,12 +188,19 @@ void state_machine_tick(uint8_t data) {
                     write_byte_blocking(pio, smDatWriter, data);
                 }
 
-                current_state = command_state;
+                next_state = command_state;
                 command_state = MC_IDLE;
+                sm_byte_counter = 0;
             }
-            sm_byte_counter++;
         break;
-        case MC_EXECUTE_READ:
+        case MC_EXECUTE_ID: // send mc id - used to identify which type of device this is
+            if(sm_byte_counter++ < sizeof(id_data)) {
+                write_byte_blocking(pio, smDatWriter, id_data[sm_byte_counter]);
+            } else {
+                next_state = MC_IDLE;
+            }
+        break;
+        case MC_EXECUTE_READ: // do a read operation
             if(sm_byte_counter == 0) {
                 // Send ACK2
                 write_byte_blocking(pio, smDatWriter, MC_ACK2);
@@ -196,7 +217,7 @@ void state_machine_tick(uint8_t data) {
                 } else {
                     // Abort transaction - invalid sector
                     write_byte_blocking(pio, smDatWriter, 0xff);
-                    current_state = MC_ABORT;
+                    next_state = MC_ABORT;
                 }
             } else {
                 // Performing read
@@ -208,22 +229,60 @@ void state_machine_tick(uint8_t data) {
                 } else {
                     // Send checksum
                     write_byte_blocking(pio, smDatWriter, checksum);
-                    current_state = MC_END;
+                    checksum = 0x00;
+                    next_state = MC_END;
                 }
             }
             sm_byte_counter++;
         break;
-        case MC_ABORT:
+        case MC_EXECUTE_WRITE: // do a write operation
+            if(memory_card_is_sector_valid(&mc, sm_address)) {
+                uint8_t* sec_ptr = memory_card_get_sector_ptr(&mc, sm_address);
+                if(sm_byte_counter == 0) {
+                    checksum = ((sm_address & 0xFF00) << 8) ^ (sm_address & 0x00FF);
+                }
+                if(sm_byte_counter < MC_SEC_SIZE) {
+                    checksum ^= data;
+                    sec_ptr[sm_byte_counter] = data;
+                    write_byte_blocking(pio, smDatWriter, data);
+                } else {
+                    if (sm_byte_counter == MC_SEC_SIZE) {
+                        // Read checksum
+                        recv_checksum = data;
+                        write_byte_blocking(pio, smDatWriter, MC_ACK1);
+                    } else {
+                        // ACK 2
+                        write_byte_blocking(pio, smDatWriter, MC_ACK2);
+                        memory_card_reset_seen_flag(&mc);
+                        if(sm_address != MC_TEST_SEC) {
+                            memory_card_set_sync(&mc, true);
+                        }
+                        next_state = MC_END;
+                    }
+                }
+            } else {
+                write_byte_blocking(pio, smDatWriter, 0xff);
+                next_state = MC_ABORT;
+            }
+            sm_byte_counter++;
+        break;
+        case MC_ABORT: // something went wrong, abort
             write_byte_blocking(pio, smDatWriter, 0xff);
-            current_state = MC_IDLE;
+            next_state = MC_IDLE;
         break;
-        case MC_END:
-            // Send end byte and cancel ack
+        case MC_END: // end
+            // Send end byte and update timestamp
+            if(recv_checksum == checksum) {
+                write_byte_blocking(pio, smDatWriter, MC_GOOD);
+            } else {
+                write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
+            }
             memory_card_update_timestamp(&mc);
-            write_byte_blocking(pio, smDatWriter, MC_GOOD);
-            cancel_ack();
-            current_state = MC_IDLE;
+            next_state = MC_IDLE;
         break;
+        default:
+            next_state = MC_IDLE;
+            write_byte_blocking(pio, smDatWriter, 0xff);
     }
 }
 
@@ -244,8 +303,8 @@ _Noreturn void simulate_memory_card_sm() {
         uint8_t data = read_byte_blocking(pio, smCmdReader);
         state_machine_tick(data);
 
-        if(mc.out_of_sync) {
-            if(to_ms_since_boot(get_absolute_time()) - mc.last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
+        if(mc.out_of_sync && current_state == MC_IDLE) {
+            if(to_ms_since_boot(get_absolute_time()) - mc.last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC) {
                 printf("SYNC	");
                 if(0 == memory_card_sync(&mc)) {
                     memory_card_set_sync(&mc, false);

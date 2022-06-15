@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
-add_executable(PicoMemcard src/memcard_simulator_sm.c inc/memcard_simulator_sm.h)
+add_executable(PicoMemcard)
 
 pico_set_linker_script(PicoMemcard ${CMAKE_SOURCE_DIR}/memmap.ld)
 pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
@@ -18,7 +18,7 @@ target_sources(PicoMemcard PUBLIC
     ${CMAKE_SOURCE_DIR}/src/lfs_disk.c
     ${CMAKE_SOURCE_DIR}/src/lfs_flash_handler.c
     ${CMAKE_SOURCE_DIR}/src/main.c
-    ${CMAKE_SOURCE_DIR}/src/memcard_simulator.c
+    ${CMAKE_SOURCE_DIR}/src/memcard_simulator_sm.c
     ${CMAKE_SOURCE_DIR}/src/memory_card.c
     ${CMAKE_SOURCE_DIR}/src/msc_handler.c
     ${CMAKE_SOURCE_DIR}/src/ram_disk.c
@@ -38,6 +38,6 @@ target_include_directories(PicoMemcard PUBLIC
 
 pico_enable_stdio_uart(PicoMemcard 1)	# enable only UART stdio
 
-target_link_libraries(PicoMemcard pico_stdlib pico_time pico_multicore hardware_flash hardware_pio tinyusb_device tinyusb_board)
+target_link_libraries(PicoMemcard pico_stdlib pico_time hardware_flash hardware_pio tinyusb_device tinyusb_board)
 
 pico_add_extra_outputs(PicoMemcard)
