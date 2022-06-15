@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
-add_executable(PicoMemcard)
+add_executable(PicoMemcard src/memcard_simulator_sm.c inc/memcard_simulator_sm.h)
 
 pico_set_linker_script(PicoMemcard ${CMAKE_SOURCE_DIR}/memmap.ld)
 pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
