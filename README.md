@@ -34,7 +34,7 @@ I've designed the PCB with a bit of future-proofeness in mind. Although not yet 
 
 Since I've already received so many requests and I'm starting to lose track of them, I created a Google Form where you can [request one]. It also allows me to understand how many PCBs I should manufacture. If you do request one, make sure to specify a way for me to contact you back in order to get shipping information and stuff.
 
-Before filling the form, keep in mind that the cheapest way to build PicoMemcard is using a counterfeit memory card. The PCB will cost between €3-8 (depends on how many units are manufactured in a single order so it changes from batch to batch), plus shipping costs (around €1-2 for EU, €2-3 for the rest of the world expect Australia and a few places which costs around €4).
+Before filling the form, keep in mind that the cheapest way to build PicoMemcard is using a counterfeit memory card from Aliexpress. The custom PCB makes the building process much easier and gets you a more professional-looking product, but the features you get are the same.
 
 <img src="./docs/PCB-Demo.jpg" alt="Custom PCB in use" width="800">
 
