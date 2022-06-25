@@ -6,3 +6,6 @@ build/
 
 # FatFS documentation
 ff14b/documents
+
+/cmake-build-*
+/.idea

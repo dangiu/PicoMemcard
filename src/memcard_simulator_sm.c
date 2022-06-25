@@ -41,7 +41,7 @@ uint8_t command_state = MC_IDLE;
 uint8_t checksum = 0x00;
 uint8_t recv_checksum = 0x00;
 uint8_t sm_byte_counter = 0;
-uint8_t sm_address = 0x00;
+uint16_t sm_address = 0x0000;
 uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
 bool in_transaction = false;
 
@@ -74,7 +74,7 @@ void pio0_irq0() {
     next_state = MC_IDLE;
     command_state = MC_IDLE;
     sm_byte_counter = 0;
-    sm_address = 0x00;
+    sm_address = 0x0000;
     checksum = 0x00;
     recv_checksum = 0x00;
     in_transaction = false;
@@ -127,7 +127,7 @@ void state_machine_tick(uint8_t data) {
             command_state = MC_IDLE;
             checksum = 0x00;
             recv_checksum = 0x00;
-            sm_address = 0x00;
+            sm_address = 0x0000;
             next_state = MC_IDLE;
             in_transaction = false;
             if (data == MEMCARD_WAKE) {
@@ -200,8 +200,8 @@ void state_machine_tick(uint8_t data) {
             }
         break;
         case MC_EXECUTE_ID: // send mc id - used to identify which type of device this is
-            if(sm_byte_counter++ < sizeof(id_data)) {
-                write_byte_blocking(pio, smDatWriter, id_data[sm_byte_counter]);
+            if(sm_byte_counter < sizeof(id_data)) {
+                write_byte_blocking(pio, smDatWriter, id_data[sm_byte_counter++]);
             } else {
                 memory_card_update_timestamp(&mc);
                 next_state = MC_IDLE;
@@ -212,7 +212,7 @@ void state_machine_tick(uint8_t data) {
             if(sm_byte_counter == 0) {
                 // Send ACK2
                 write_byte_blocking(pio, smDatWriter, MC_ACK2);
-                checksum = ((sm_address & 0xFF00) << 8) ^ (sm_address & 0x00FF);
+                checksum = ((sm_address & 0xFF00) >> 8) ^ (sm_address & 0x00FF);
             } else if (sm_byte_counter > 0 && sm_byte_counter < 3) {
                 if(memory_card_is_sector_valid(&mc, sm_address)) {
                     if (sm_byte_counter == 1) {
@@ -247,7 +247,7 @@ void state_machine_tick(uint8_t data) {
             if(memory_card_is_sector_valid(&mc, sm_address)) {
                 uint8_t* sec_ptr = memory_card_get_sector_ptr(&mc, sm_address);
                 if(sm_byte_counter == 0) {
-                    checksum = ((sm_address & 0xFF00) << 8) ^ (sm_address & 0x00FF);
+                    checksum = ((sm_address & 0xFF00) >> 8) ^ (sm_address & 0x00FF);
                 }
                 if(sm_byte_counter < MC_SEC_SIZE) {
                     checksum ^= data;
