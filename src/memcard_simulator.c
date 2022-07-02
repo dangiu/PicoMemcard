@@ -2,6 +2,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "pico/multicore.h"
+#include "pico/util/queue.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "bsp/board.h"
@@ -34,6 +35,12 @@ uint offsetDatWriter;
 uint offsetAckSender;
 
 MemoryCard *mc;
+queue_t *mc_data_sync_queue;
+
+typedef struct {
+	uint16_t address;
+	uint8_t data[MC_SEC_SIZE];
+} mc_sync_entry_t;
 
 void simulation_thread();
 
@@ -135,6 +142,8 @@ void process_memcard_write(MemoryCard* mc) {
 
 	uint8_t pre = sec_lsb;
 	uint8_t checksum = sec_msb ^ sec_lsb;
+	mc_sync_entry_t sync_entry;
+	sync_entry.address = (uint16_t)(sec_msb << 8 | sec_lsb);
 	for(uint32_t i = 0; i < MC_SEC_SIZE; ++i) {
 		temp = read_byte_blocking(pio, smCmdReader);
 		write_byte_blocking(pio, smDatWriter, temp);
@@ -142,6 +151,7 @@ void process_memcard_write(MemoryCard* mc) {
 
 		if(memory_card_is_sector_valid(mc, (uint32_t) sec_msb << 8 | sec_lsb)) {	// save sector data only if sector address is valid
 			sec_ptr[i] = temp;
+			sync_entry.data[i] = temp;
 		}
 	}
 
@@ -162,6 +172,7 @@ void process_memcard_write(MemoryCard* mc) {
 		write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
 	} else {	// write performed, no errors
 		write_byte_blocking(pio, smDatWriter, MC_GOOD);
+		queue_add_blocking(mc_data_sync_queue, &sync_entry);
 	}
 	read_byte_blocking(pio, smCmdReader);
 	cancel_ack();	// end-of-protocol, don't need to send more data
@@ -261,6 +272,11 @@ int simulate_memory_card() {
 	mc = (MemoryCard*)malloc(sizeof(MemoryCard));
 	memset((void*)mc, 0x00, sizeof(MemoryCard));
 
+	mc_data_sync_queue = (queue_t*)malloc(sizeof(queue_t));
+	memset((void*)mc_data_sync_queue, 0x00, sizeof(queue_t));
+
+	queue_init(mc_data_sync_queue, sizeof(mc_sync_entry_t), 10);
+
 	if(0 == memory_card_init(mc)) {
 		board_led_on();
 	} else {
@@ -301,16 +317,15 @@ int simulate_memory_card() {
 	multicore_launch_core1(simulation_thread);
 
 	while(true) {
-		/* Sync if necessary, in a critical section so the thread won't be restarted while syncing */
-		if(mc->out_of_sync) {
-			if(to_ms_since_boot(get_absolute_time()) - mc->last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
-				printf("SYNC	");
-				if(0 == memory_card_sync(mc)) {
-					memory_card_set_sync(mc, false);
-					printf("OK\n");
-				} else {
-					printf("FAIL\n");
-				}
+		if(!queue_is_empty(mc_data_sync_queue)) {
+			mc_sync_entry_t next_entry;
+			queue_remove_blocking(mc_data_sync_queue, &next_entry);
+			printf("SYNC	");
+			if(0 == memory_card_sync_page(mc, next_entry.address, next_entry.data)) {
+				memory_card_set_sync(mc, false);
+				printf("OK\n");
+			} else {
+				printf("FAIL\n");
 			}
 		}
 	}

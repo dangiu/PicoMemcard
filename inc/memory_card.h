@@ -32,7 +32,7 @@ uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
 void memory_card_set_sync(MemoryCard* mc, bool out_of_sync);
 bool memory_card_get_sync(MemoryCard* mc);
 void memory_card_update_timestamp(MemoryCard* mc);
-uint32_t memory_card_sync(MemoryCard* mc);
+uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data);
 uint32_t memory_card_reset_seen_flag(MemoryCard* mc);
 
 #endif
