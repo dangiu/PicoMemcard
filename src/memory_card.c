@@ -53,7 +53,6 @@ uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) 
 	lfs_t lfs;
 	lfs_file_t memcard;
 
-	printf("ADDR: 0x%X\n", address);
 	if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
 		if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard, MEMCARD_FILE_NAME, LFS_O_RDWR)) {
 			lfs_file_seek(&lfs, &memcard, address, LFS_SEEK_SET);

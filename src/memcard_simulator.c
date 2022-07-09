@@ -20,8 +20,6 @@
 #define MEMCARD_WRITE 0x57
 #define MEMCARD_ID 0x53
 
-#define IDLE_TIMEOUT_BEFORE_SYNC 2000	// time (in ms) the memory card must be inactive before performing sync to filesystem
-
 PIO pio = pio0;
 
 uint smSelMonitor;
@@ -35,7 +33,8 @@ uint offsetDatWriter;
 uint offsetAckSender;
 
 MemoryCard *mc;
-queue_t *mc_data_sync_queue;
+queue_t mc_data_sync_queue;
+critical_section_t sync_write_section;
 
 typedef struct {
 	uint16_t address;
@@ -49,6 +48,7 @@ void simulation_thread();
  * Notifies main thread to reset SMs and sim thread
  */
 void pio0_irq0() {
+    // NOTE: This will not block core 1
 	// Reset the state machines and sim thread, transaction has ended
 	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender, false);
 	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
@@ -58,8 +58,10 @@ void pio0_irq0() {
 	pio_sm_clear_fifos(pio, smCmdReader);
 	pio_sm_drain_tx_fifo(pio, smDatWriter); // drain instead of clear, so that we empty the OSR
 
+    critical_section_enter_blocking(&sync_write_section); // wait until queue writes are done
 	multicore_reset_core1(); // first, stop the simulation thread
 	multicore_launch_core1(simulation_thread); // re-launch the simulation thread
+    critical_section_exit(&sync_write_section);
 
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
 	pio_interrupt_clear(pio0, 0);
@@ -172,7 +174,11 @@ void process_memcard_write(MemoryCard* mc) {
 		write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
 	} else {	// write performed, no errors
 		write_byte_blocking(pio, smDatWriter, MC_GOOD);
-		queue_add_blocking(mc_data_sync_queue, &sync_entry);
+        if (sync_entry.address != MC_TEST_SEC) {
+            critical_section_enter_blocking(&sync_write_section);
+            queue_add_blocking(&mc_data_sync_queue, &sync_entry);
+            critical_section_exit(&sync_write_section);
+        }
 	}
 	read_byte_blocking(pio, smCmdReader);
 	cancel_ack();	// end-of-protocol, don't need to send more data
@@ -272,10 +278,9 @@ int simulate_memory_card() {
 	mc = (MemoryCard*)malloc(sizeof(MemoryCard));
 	memset((void*)mc, 0x00, sizeof(MemoryCard));
 
-	mc_data_sync_queue = (queue_t*)malloc(sizeof(queue_t));
-	memset((void*)mc_data_sync_queue, 0x00, sizeof(queue_t));
+	queue_init(&mc_data_sync_queue, sizeof(mc_sync_entry_t), 4);
 
-	queue_init(mc_data_sync_queue, sizeof(mc_sync_entry_t), 10);
+    critical_section_init(&sync_write_section);
 
 	if(0 == memory_card_init(mc)) {
 		board_led_on();
@@ -289,7 +294,7 @@ int simulate_memory_card() {
 	printf("\n\nInitializing memory card simulation...\n");
 
 	/* Setup PIO interrupts */
-	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0);
+	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0); // installed on the current core (0)
 	irq_set_enabled(PIO0_IRQ_0, true);
 
 	offsetSelMonitor = pio_add_program(pio, &sel_monitor_program);
@@ -317,15 +322,11 @@ int simulate_memory_card() {
 	multicore_launch_core1(simulation_thread);
 
 	while(true) {
-		if(!queue_is_empty(mc_data_sync_queue)) {
+		if(!queue_is_empty(&mc_data_sync_queue)) {
 			mc_sync_entry_t next_entry;
-			queue_remove_blocking(mc_data_sync_queue, &next_entry);
-			printf("SYNC	");
+			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
 			if(0 == memory_card_sync_page(mc, next_entry.address, next_entry.data)) {
 				memory_card_set_sync(mc, false);
-				printf("OK\n");
-			} else {
-				printf("FAIL\n");
 			}
 		}
 	}
