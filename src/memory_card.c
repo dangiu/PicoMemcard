@@ -36,18 +36,6 @@ uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector) {
 	return &mc->data[sector * MC_SEC_SIZE];
 }
 
-void memory_card_set_sync(MemoryCard* mc, bool out_of_sync) {
-	mc->out_of_sync = out_of_sync;
-}
-
-bool memory_card_get_sync(MemoryCard* mc) {
-	return mc->out_of_sync;
-}
-
-void memory_card_update_timestamp(MemoryCard* mc) {
-	mc->last_operation_timestamp = to_ms_since_boot(get_absolute_time());
-}
-
 uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) {
 	uint32_t status = 0;
 	lfs_t lfs;
