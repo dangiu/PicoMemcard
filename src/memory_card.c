@@ -1,8 +1,6 @@
 #include "memory_card.h"
-#include "pico/time.h"
-#include "sd_config.h"
-#include "sd_card.h"
 #include "ff.h"
+#include "pico/printf.h"
 
 uint32_t memory_card_init(MemoryCard* mc) {
 	uint32_t status = 0;
@@ -41,8 +39,10 @@ uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) 
 
     if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ | FA_WRITE)) {
         UINT bytes_written;
-        f_seek(&memcard, address);
+        f_lseek(&memcard, address);
         f_write(&memcard, data, MC_SEC_SIZE, &bytes_written);
+
+        printf("Wrote %d bytes to 0x%X\n", bytes_written, address);
 
         if(MC_SEC_SIZE != bytes_written) {
             status = 1;

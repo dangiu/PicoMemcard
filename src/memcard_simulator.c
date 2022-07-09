@@ -1,4 +1,4 @@
-#include <sys/cdefs.h>
+#include <string.h>
 #include "memcard_simulator.h"
 #include "stdio.h"
 #include "stdlib.h"
@@ -244,6 +244,7 @@ void state_machine_tick(uint8_t data) {
                         write_byte_blocking(pio, smDatWriter, MC_ACK2);
                         memory_card_reset_seen_flag(mc);
                         if(sm_address != MC_TEST_SEC) {
+                            sync_entry.address = sm_address;
                             queue_add_blocking(&mc_data_sync_queue, &sync_entry);
                         }
                         next_state = MC_END;
@@ -274,13 +275,6 @@ void state_machine_tick(uint8_t data) {
     }
 }
 
-void blink_led() {
-	board_led_on();
-	sleep_ms(250);
-	board_led_off();
-	sleep_ms(250);
-}
-
 _Noreturn void simulation_thread() {
 	while(true) {
 		uint8_t item = read_byte_blocking(pio, smCmdReader);
@@ -297,14 +291,7 @@ _Noreturn int simulate_memory_card() {
 
     critical_section_init(&sync_write_section);
 
-	if(0 == memory_card_init(mc)) {
-		board_led_on();
-	} else {
-		/* Blink LED forever */
-		while (true) {
-			blink_led();
-		}
-	}
+	memory_card_init(mc);
 
 	printf("\n\nInitializing memory card simulation...\n");
 
