@@ -169,6 +169,7 @@ void state_machine_tick(uint8_t data) {
             } else if (sm_byte_counter == 2) {
                 // LSB
                 sm_address |= data;
+                sync_entry.address = sm_address;
                 if(command_state == MC_EXECUTE_READ) {
                     write_byte_blocking(pio, smDatWriter, MC_ACK1);
                 } else {
@@ -244,7 +245,6 @@ void state_machine_tick(uint8_t data) {
                         write_byte_blocking(pio, smDatWriter, MC_ACK2);
                         memory_card_reset_seen_flag(mc);
                         if(sm_address != MC_TEST_SEC) {
-                            sync_entry.address = sm_address;
                             queue_add_blocking(&mc_data_sync_queue, &sync_entry);
                         }
                         next_state = MC_END;
@@ -327,6 +327,7 @@ _Noreturn int simulate_memory_card() {
 		if(!queue_is_empty(&mc_data_sync_queue)) {
 			mc_sync_entry_t next_entry;
 			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
+            printf("ADDR 0x%X\n", next_entry.address);
 			memory_card_sync_page(mc, next_entry.address, next_entry.data);
 		}
 	}

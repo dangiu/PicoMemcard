@@ -42,8 +42,6 @@ uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) 
         f_lseek(&memcard, address);
         f_write(&memcard, data, MC_SEC_SIZE, &bytes_written);
 
-        printf("Wrote %d bytes to 0x%X\n", bytes_written, address);
-
         if(MC_SEC_SIZE != bytes_written) {
             status = 1;
         }
