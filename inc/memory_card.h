@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define MEMCARD_FILE_NAME "MEMCARD.MCR"     // name of memcard file inside system
+#define MEMCARD_FILE_CONTENT_SIZE 131072	// size of memcard file content in bytes (128KB)
+
 #define MC_SEC_SIZE 128			// size of single sector in bytes
 #define MC_SIZE MC_SEC_SIZE * 1024		// size of memory card in bytes
 #define MC_MAX_SEC 0x3ff

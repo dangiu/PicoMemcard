@@ -1,27 +1,26 @@
 #include "memory_card.h"
-#include "lfs_disk.h"
-#include "lfs.h"
 #include "pico/time.h"
+#include "sd_config.h"
+#include "sd_card.h"
+#include "ff.h"
 
 uint32_t memory_card_init(MemoryCard* mc) {
 	uint32_t status = 0;
-	lfs_t lfs;
-	lfs_file_t memcard;
+    FIL memcard;
 
-	mc->flag_byte = MC_FLAG_BYTE_DEF;
-	if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
-		if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard, MEMCARD_FILE_NAME, LFS_O_RDONLY)) {
-			if(MC_SIZE != lfs_file_read(&lfs, &memcard, mc->data, MC_SIZE)) {
-				status = 1;	// failed to read memory card image
-			}
-			lfs_file_close(&lfs, &memcard);
-		} else  {
-			status = 1;	// failed to open memcard file
-		}
-		lfs_unmount(&lfs);
-	} else {
-		status = 1;	// failed to mount filesystem
-	}
+    mc->flag_byte = MC_FLAG_BYTE_DEF;
+    if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ)) {
+        UINT bytes_read;
+        f_read(&memcard, &mc->data, MC_SIZE, &bytes_read);
+
+        if(MC_SIZE != bytes_read) {
+            status = 1;
+        }
+        f_close(&memcard);
+    } else {
+        status = 1;
+    }
+
 	return status;
 }
 
@@ -38,23 +37,21 @@ uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector) {
 
 uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) {
 	uint32_t status = 0;
-	lfs_t lfs;
-	lfs_file_t memcard;
+    FIL memcard;
 
-	if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
-		if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard, MEMCARD_FILE_NAME, LFS_O_RDWR)) {
-			lfs_file_seek(&lfs, &memcard, address, LFS_SEEK_SET);
-			if(MC_SEC_SIZE != lfs_file_write(&lfs, &memcard, data, MC_SEC_SIZE)) {
-				status = 1;	// failed to write-back memory card image
-			}
-			lfs_file_close(&lfs, &memcard);
-		} else  {
-			status = 1;	// failed to open memcard file
-		}
-		lfs_unmount(&lfs);
-	} else {
-		status = 1;	// failed to mount filesystem
-	}
+    if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ | FA_WRITE)) {
+        UINT bytes_written;
+        f_seek(&memcard, address);
+        f_write(&memcard, data, MC_SEC_SIZE, &bytes_written);
+
+        if(MC_SEC_SIZE != bytes_written) {
+            status = 1;
+        }
+        f_close(&memcard);
+    } else {
+        status = 1;
+    }
+
 	return status;
 }
 

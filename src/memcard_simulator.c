@@ -6,7 +6,6 @@
 #include "pico/util/queue.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
-#include "bsp/board.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
 
