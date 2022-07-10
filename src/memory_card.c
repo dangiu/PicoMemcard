@@ -33,13 +33,13 @@ uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector) {
 	return &mc->data[sector * MC_SEC_SIZE];
 }
 
-uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) {
+uint32_t memory_card_sync_page(uint16_t address, uint8_t* data) {
 	uint32_t status = 0;
     FIL memcard;
 
     if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ | FA_WRITE)) {
         UINT bytes_written;
-        f_lseek(&memcard, address);
+        f_lseek(&memcard, (address * MC_SEC_SIZE));
         f_write(&memcard, data, MC_SEC_SIZE, &bytes_written);
 
         if(MC_SEC_SIZE != bytes_written) {
@@ -52,6 +52,19 @@ uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data) 
 
 	return status;
 }
+
+#ifdef PMC_ENABLE_SYNC_LOG
+uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_level) {
+    FIL queue_log;
+
+    if(FR_OK == f_open(&queue_log, "queue.log", FA_OPEN_APPEND | FA_WRITE)) {
+        f_printf(&queue_log, "SYNC SECTOR [0x%X]: Queue depth [%d]\n", address, queue_level);
+        f_close(&queue_log);
+    }
+
+    return memory_card_sync_page(address, data);
+}
+#endif
 
 uint32_t memory_card_reset_seen_flag(MemoryCard* mc) {
 	mc->flag_byte &= ~(1 << 3);

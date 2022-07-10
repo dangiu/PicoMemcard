@@ -29,6 +29,7 @@ target_include_directories(PicoMemcard PUBLIC
 
 pico_enable_stdio_uart(PicoMemcard 1)	# enable only UART stdio
 
+add_definitions(-DPMC_ENABLE_SYNC_LOG)
 target_link_libraries(PicoMemcard pico_multicore pico_stdlib pico_time hardware_pio FatFs_SPI)
 
 pico_add_extra_outputs(PicoMemcard)

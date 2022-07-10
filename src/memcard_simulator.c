@@ -328,7 +328,11 @@ _Noreturn int simulate_memory_card() {
 			mc_sync_entry_t next_entry;
 			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
             printf("ADDR 0x%X\n", next_entry.address);
-			memory_card_sync_page(mc, next_entry.address, next_entry.data);
+#ifdef PMC_ENABLE_SYNC_LOG
+            memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue));
+#else
+            memory_card_sync_page(next_entry.address, next_entry.data);
+#endif
 		}
 	}
 }

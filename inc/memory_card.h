@@ -25,17 +25,16 @@
 typedef struct {
 	uint8_t flag_byte;
 	uint8_t data[MC_SIZE];
-	bool out_of_sync;
-	uint32_t last_operation_timestamp;
 } MemoryCard;
 
 uint32_t memory_card_init(MemoryCard* mc);
 bool memory_card_is_sector_valid(MemoryCard* mc, uint32_t sector);
 uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
-void memory_card_set_sync(MemoryCard* mc, bool out_of_sync);
-bool memory_card_get_sync(MemoryCard* mc);
-void memory_card_update_timestamp(MemoryCard* mc);
-uint32_t memory_card_sync_page(MemoryCard *mc, uint16_t address, uint8_t* data);
+uint32_t memory_card_sync_page(uint16_t address, uint8_t* data);
 uint32_t memory_card_reset_seen_flag(MemoryCard* mc);
+
+#ifdef PMC_ENABLE_SYNC_LOG
+uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_depth);
+#endif
 
 #endif
