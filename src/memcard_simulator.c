@@ -291,7 +291,7 @@ _Noreturn int simulate_memory_card() {
 
     critical_section_init(&sync_write_section);
 
-	memory_card_init(mc);
+	memory_card_init(mc, 0);
 
 	printf("\n\nInitializing memory card simulation...\n");
 

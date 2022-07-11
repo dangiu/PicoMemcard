@@ -27,7 +27,7 @@ typedef struct {
 	uint8_t data[MC_SIZE];
 } MemoryCard;
 
-uint32_t memory_card_init(MemoryCard* mc);
+uint32_t memory_card_init(MemoryCard* mc, uint8_t bank_number);
 bool memory_card_is_sector_valid(MemoryCard* mc, uint32_t sector);
 uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
 uint32_t memory_card_sync_page(uint16_t address, uint8_t* data);

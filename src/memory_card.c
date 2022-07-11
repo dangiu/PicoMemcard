@@ -1,20 +1,46 @@
+#include <string.h>
 #include "memory_card.h"
 #include "ff.h"
 #include "pico/printf.h"
 
-uint32_t memory_card_init(MemoryCard* mc) {
+uint32_t read_mc_image(FIL* file, void* buffer) {
+    uint32_t status = 0;
+    UINT bytes_read;
+    f_read(file, &buffer, MC_SIZE, &bytes_read);
+
+    if(MC_SIZE != bytes_read) {
+        status = 1;
+    }
+
+    f_close(file);
+    return status;
+}
+
+uint32_t memory_card_init(MemoryCard* mc, uint8_t bank_number) {
 	uint32_t status = 0;
     FIL memcard;
+    char file_name[16];
+
+    sprintf(file_name, "MEMCARD%d.MCR", bank_number);
 
     mc->flag_byte = MC_FLAG_BYTE_DEF;
-    if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ)) {
-        UINT bytes_read;
-        f_read(&memcard, &mc->data, MC_SIZE, &bytes_read);
 
-        if(MC_SIZE != bytes_read) {
+    FRESULT result = f_open(&memcard, file_name, FA_READ);
+
+    if(result == FR_OK) {
+        return read_mc_image(&memcard, &mc->data);
+    } else if(result == FR_NO_FILE) {
+        // We need to create the file
+        if(FR_OK == f_open(&memcard, file_name, FA_CREATE_NEW | FA_WRITE)) {
+            for(int i = 0; i < MC_SIZE; i++) {
+                f_putc(0x00, &memcard);
+            }
+            f_close(&memcard);
+            // Clear the buffer in memory, no point in reading the image since it's empty.
+            memset(&mc->data, 0x00, MC_SIZE);
+        } else {
             status = 1;
         }
-        f_close(&memcard);
     } else {
         status = 1;
     }
