@@ -36,6 +36,8 @@ MemoryCard *mc;
 queue_t mc_data_sync_queue;
 critical_section_t sync_write_section;
 
+uint8_t current_bank = 0;
+
 typedef struct {
 	uint16_t address;
 	uint8_t data[MC_SEC_SIZE];
@@ -291,7 +293,7 @@ _Noreturn int simulate_memory_card() {
 
     critical_section_init(&sync_write_section);
 
-	memory_card_init(mc, 0);
+	memory_card_init(mc, current_bank);
 
 	printf("\n\nInitializing memory card simulation...\n");
 

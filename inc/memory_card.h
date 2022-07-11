@@ -30,11 +30,11 @@ typedef struct {
 uint32_t memory_card_init(MemoryCard* mc, uint8_t bank_number);
 bool memory_card_is_sector_valid(MemoryCard* mc, uint32_t sector);
 uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
-uint32_t memory_card_sync_page(uint16_t address, uint8_t* data);
+uint32_t memory_card_sync_page(uint16_t address, uint8_t* data, uint8_t bank_number);
 uint32_t memory_card_reset_seen_flag(MemoryCard* mc);
 
 #ifdef PMC_ENABLE_SYNC_LOG
-uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_depth);
+uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t bank_number, uint8_t queue_depth);
 #endif
 
 #endif
