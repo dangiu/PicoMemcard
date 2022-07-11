@@ -1,9 +1,11 @@
+#include <string.h>
 #include "memcard_simulator.h"
 #include "stdio.h"
-#include "pico/stdlib.h"
+#include "stdlib.h"
+#include "pico/multicore.h"
+#include "pico/util/queue.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
-#include "bsp/board.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
 
@@ -18,8 +20,6 @@
 #define MEMCARD_WRITE 0x57
 #define MEMCARD_ID 0x53
 
-#define IDLE_TIMEOUT_BEFORE_SYNC 1000	// time (in ms) the memory card must be inactive before performing sync to filesystem
-
 PIO pio = pio0;
 
 uint smSelMonitor;
@@ -32,274 +32,271 @@ uint offsetCmdReader;
 uint offsetDatWriter;
 uint offsetAckSender;
 
+MemoryCard *mc;
+queue_t mc_data_sync_queue;
+critical_section_t sync_write_section;
+
+typedef struct {
+	uint16_t address;
+	uint8_t data[MC_SEC_SIZE];
+} mc_sync_entry_t;
+
+enum memcard_states {
+    MC_IDLE = 1,
+    MC_COMMAND,
+    MC_SEND_ID,
+    MC_RECV_ADDR,
+    MC_EXECUTE_READ,
+    MC_EXECUTE_WRITE,
+    MC_EXECUTE_ID,
+    MC_ABORT,
+    MC_END
+};
+
+uint8_t current_state = MC_IDLE;
+uint8_t next_state = MC_IDLE;
+uint8_t command_state = MC_IDLE;
+uint8_t checksum = 0x00;
+uint8_t recv_checksum = 0x00;
+uint8_t sm_byte_counter = 0;
+uint16_t sm_address = 0x0000;
+uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
+
+mc_sync_entry_t sync_entry;
+
+_Noreturn void simulation_thread();
+
 /**
  * @brief Interrupt handler called when SEL goes high
- * Resets cmd_reader and dat_wruter state machines
+ * Notifies main thread to reset SMs and sim thread
  */
 void pio0_irq0() {
-	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter, false);
-	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter);
+    // NOTE: This will not block core 1
+	// Reset the state machines and sim thread, transaction has ended
+	pio_set_sm_mask_enabled(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender, false);
+	pio_restart_sm_mask(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
 	pio_sm_exec(pio, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
 	pio_sm_exec(pio, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
+	pio_sm_exec(pio, smAckSender, pio_encode_jmp(offsetAckSender));	// restart smAckSender PC
 	pio_sm_clear_fifos(pio, smCmdReader);
-	pio_sm_clear_fifos(pio, smDatWriter);
+	pio_sm_drain_tx_fifo(pio, smDatWriter); // drain instead of clear, so that we empty the OSR
+
+    // Reset mc state machine
+    current_state = MC_IDLE;
+    next_state = MC_IDLE;
+    command_state = MC_IDLE;
+    sm_byte_counter = 0;
+    sm_address = 0x0000;
+    checksum = 0x00;
+    recv_checksum = 0x00;
+    sync_entry.address = 0x0000;
+    memset(&sync_entry.data, 0x00, 128);
+
+	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
 	pio_interrupt_clear(pio0, 0);
-	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter);
 }
 
 void cancel_ack() {
 	pio_sm_exec(pio, smAckSender, pio_encode_jmp(offsetAckSender));		// restart smAckSender
 }
 
-void process_memcard_read(MemoryCard* mc) {
-	uint8_t temp;
-	write_byte_blocking(pio, smDatWriter, 0x00);	// send filler
-	/* read sector number */
-	uint8_t sec_msb = read_byte_blocking(pio, smCmdReader);
-	
-	write_byte_blocking(pio, smDatWriter, sec_msb);	// send msb
-	uint8_t sec_lsb = read_byte_blocking(pio, smCmdReader);
 
-	/* queue acks */
-	write_byte_blocking(pio, smDatWriter, MC_ACK1);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
+void state_machine_tick(uint8_t data) {
+    bool valid_command = false;
+    current_state = next_state;
 
-	write_byte_blocking(pio, smDatWriter, MC_ACK2);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-	
-	/* queue sector confirm */
-	if(memory_card_is_sector_valid(mc, (uint32_t) sec_msb << 8 | sec_lsb)) {
-		write_byte_blocking(pio, smDatWriter, sec_msb);
-		temp = read_byte_blocking(pio, smCmdReader);
-		if(temp != 0x00) {
-			return;
-		}
-		write_byte_blocking(pio, smDatWriter, sec_lsb);
-		temp = read_byte_blocking(pio, smCmdReader);
-		if(temp != 0x00) {
-			return;
-		}
-	} else {
-		/* invalid sector, queue 0xff 0xff and abort transfer */
-		write_byte_blocking(pio, smDatWriter, 0xff);
-		temp = read_byte_blocking(pio, smCmdReader);	// discard cmd
-		write_byte_blocking(pio, smDatWriter, 0xff);
-		temp = read_byte_blocking(pio, smCmdReader);	// discard cmd
-		return;
-	}
+    switch(current_state) {
+        case MC_IDLE: // idle / sleeping
+            sm_byte_counter = 0;
+            command_state = MC_IDLE;
+            checksum = 0x00;
+            recv_checksum = 0x00;
+            sm_address = 0x0000;
+            next_state = MC_IDLE;
+            if (data == MEMCARD_TOP) {
+                // Send flag byte and start transaction
+                write_byte_blocking(pio0, smDatWriter, mc->flag_byte);
+                next_state = MC_COMMAND;
+            } else {
+                cancel_ack();
+            }
+            break;
+        case MC_COMMAND: // received a wake up byte, wait for command
+            switch(data) {
+                case MEMCARD_READ:
+                    valid_command = true;
+                    command_state = MC_EXECUTE_READ;
+                    break;
+                case MEMCARD_WRITE:
+                    valid_command = true;
+                    command_state = MC_EXECUTE_WRITE;
+                    break;
+                case MEMCARD_ID:
+                    valid_command = true;
+                    command_state = MC_EXECUTE_ID;
+                    break;
+                default:
+                    valid_command = false;
+                    next_state = MC_IDLE;
+                    break;
+            }
+            if (valid_command) {
+                valid_command = false;
+                next_state = MC_SEND_ID;
+                write_byte_blocking(pio, smDatWriter, MC_ID1);
+            }
+            break;
+        case MC_SEND_ID:
+            if (command_state == MC_EXECUTE_ID) {
+                // ID doesn't need to receive an address
+                next_state = command_state;
+            } else {
+                next_state = MC_RECV_ADDR;
+            }
+            write_byte_blocking(pio, smDatWriter, MC_ID2);
+            break;
+        case MC_RECV_ADDR: // receive the address
+            if (sm_byte_counter == 0) {
+                // Filler
+                write_byte_blocking(pio, smDatWriter, 0x00);
+                sm_byte_counter++;
+            } else if (sm_byte_counter == 1) {
+                // MSB
+                sm_address = data << 8;
+                // Send MSB
+                write_byte_blocking(pio, smDatWriter, data);
+                sm_byte_counter++;
+            } else if (sm_byte_counter == 2) {
+                // LSB
+                sm_address |= data;
+                sync_entry.address = sm_address;
+                if(command_state == MC_EXECUTE_READ) {
+                    write_byte_blocking(pio, smDatWriter, MC_ACK1);
+                } else {
+                    // Otherwise send LSB
+                    write_byte_blocking(pio, smDatWriter, data);
+                }
 
-	/* queue sector data while performing xor */
-	uint8_t* sec_ptr = memory_card_get_sector_ptr(mc, (uint32_t) sec_msb << 8 | sec_lsb);
-	
-	uint8_t checksum = sec_msb ^ sec_lsb;
-	for(uint32_t i = 0; i < MC_SEC_SIZE; ++i) {
-		write_byte_blocking(pio, smDatWriter, sec_ptr[i]);
-		temp = read_byte_blocking(pio, smCmdReader);
-		if(temp != 0x00) {
-			return;
-		}
-
-		checksum = checksum ^ sec_ptr[i];
-	}
-	
-	/* queue checksum */
-	write_byte_blocking(pio, smDatWriter, checksum);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	/* queue end byte */
-	write_byte_blocking(pio, smDatWriter, MC_GOOD);
-	temp = read_byte_blocking(pio, smCmdReader);
-	cancel_ack();	// end-of-protocol, don't need to send more data
-	if(temp != 0x00) {
-		return;
-	}
-
-	memory_card_update_timestamp(mc);
-	printf("READ  %.2x%.2x\n", sec_msb, sec_lsb);
-	return;
+                next_state = command_state;
+                command_state = MC_IDLE;
+                sm_byte_counter = 0;
+            }
+            break;
+        case MC_EXECUTE_ID: // send mc id - used to identify which type of device this is
+            if(sm_byte_counter < sizeof(id_data)) {
+                write_byte_blocking(pio, smDatWriter, id_data[sm_byte_counter++]);
+            } else {
+                next_state = MC_IDLE;
+            }
+            break;
+        case MC_EXECUTE_READ: // do a read operation
+            if(sm_byte_counter == 0) {
+                // Send ACK2
+                write_byte_blocking(pio, smDatWriter, MC_ACK2);
+                checksum = ((sm_address & 0xFF00) >> 8) ^ (sm_address & 0x00FF);
+            } else if (sm_byte_counter > 0 && sm_byte_counter < 3) {
+                if(memory_card_is_sector_valid(mc, sm_address)) {
+                    if (sm_byte_counter == 1) {
+                        // MSB
+                        write_byte_blocking(pio, smDatWriter, (sm_address & 0xFF00) >> 8);
+                    } else {
+                        // LSB
+                        write_byte_blocking(pio, smDatWriter, (sm_address & 0x00FF));
+                    }
+                } else {
+                    // Abort transaction - invalid sector
+                    write_byte_blocking(pio, smDatWriter, 0xff);
+                    next_state = MC_ABORT;
+                }
+            } else {
+                // Performing read
+                // byte counter is 3 at start here
+                uint8_t* sec_ptr = memory_card_get_sector_ptr(mc, sm_address);
+                if ((sm_byte_counter - 3) < MC_SEC_SIZE) {
+                    write_byte_blocking(pio, smDatWriter, sec_ptr[sm_byte_counter - 3]);
+                    checksum ^= sec_ptr[sm_byte_counter - 3];
+                } else {
+                    // Send checksum
+                    write_byte_blocking(pio, smDatWriter, checksum);
+                    checksum = 0x00;
+                    next_state = MC_END;
+                }
+            }
+            sm_byte_counter++;
+            break;
+        case MC_EXECUTE_WRITE: // do a write operation
+            if(memory_card_is_sector_valid(mc, sm_address)) {
+                uint8_t* sec_ptr = memory_card_get_sector_ptr(mc, sm_address);
+                if(sm_byte_counter == 0) {
+                    checksum = ((sm_address & 0xFF00) >> 8) ^ (sm_address & 0x00FF);
+                }
+                if(sm_byte_counter < MC_SEC_SIZE) {
+                    checksum ^= data;
+                    sec_ptr[sm_byte_counter] = data;
+                    sync_entry.data[sm_byte_counter] = data;
+                    write_byte_blocking(pio, smDatWriter, data);
+                } else {
+                    if (sm_byte_counter == MC_SEC_SIZE) {
+                        // Read checksum
+                        recv_checksum = data;
+                        write_byte_blocking(pio, smDatWriter, MC_ACK1);
+                    } else {
+                        // ACK 2
+                        write_byte_blocking(pio, smDatWriter, MC_ACK2);
+                        memory_card_reset_seen_flag(mc);
+                        if(sm_address != MC_TEST_SEC) {
+                            queue_add_blocking(&mc_data_sync_queue, &sync_entry);
+                        }
+                        next_state = MC_END;
+                    }
+                }
+            } else {
+                write_byte_blocking(pio, smDatWriter, 0xff);
+                next_state = MC_ABORT;
+            }
+            sm_byte_counter++;
+            break;
+        case MC_ABORT: // something went wrong, abort
+            write_byte_blocking(pio, smDatWriter, 0xff);
+            next_state = MC_IDLE;
+            break;
+        case MC_END: // end
+            // Send end byte and update timestamp
+            if(recv_checksum == checksum) {
+                write_byte_blocking(pio, smDatWriter, MC_GOOD);
+            } else {
+                write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
+            }
+            next_state = MC_IDLE;
+            break;
+        default:
+            next_state = MC_IDLE;
+            write_byte_blocking(pio, smDatWriter, 0xff);
+    }
 }
 
-void process_memcard_write(MemoryCard* mc) {
-	uint8_t temp;
-	write_byte_blocking(pio, smDatWriter, 0x00);	// send filler
-	
-	/* read sector number */
-	uint8_t sec_msb = read_byte_blocking(pio, smCmdReader);
-	
-	write_byte_blocking(pio, smDatWriter, sec_msb);	// send msb
-	uint8_t sec_lsb = read_byte_blocking(pio, smCmdReader);
-
-	write_byte_blocking(pio, smDatWriter, sec_lsb);	// queue lsb
-
-	/* receive sector data while performing xor and queueing pre */
-	uint8_t* sec_ptr = memory_card_get_sector_ptr(mc, (uint32_t) sec_msb << 8 | sec_lsb);
-
-	uint8_t pre = sec_lsb;
-	uint8_t checksum = sec_msb ^ sec_lsb;
-	for(uint32_t i = 0; i < MC_SEC_SIZE; ++i) {
-		temp = read_byte_blocking(pio, smCmdReader);
-		write_byte_blocking(pio, smDatWriter, temp);
-		checksum = checksum ^ temp;
-
-		if(memory_card_is_sector_valid(mc, (uint32_t) sec_msb << 8 | sec_lsb)) {	// save sector data only if sector address is valid
-			sec_ptr[i] = temp;
-		}
+_Noreturn void simulation_thread() {
+	while(true) {
+		uint8_t item = read_byte_blocking(pio, smCmdReader);
+        state_machine_tick(item);
 	}
-
-	/* read checksum */
-	uint8_t chk = read_byte_blocking(pio, smCmdReader);
-
-	/* queue acks */
-	write_byte_blocking(pio, smDatWriter, MC_ACK1);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	write_byte_blocking(pio, smDatWriter, MC_ACK2);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	/* queue end byte */
-	if(!memory_card_is_sector_valid(mc, (uint32_t) sec_msb << 8 | sec_lsb)) {	// invalid sector, write not performed
-		write_byte_blocking(pio, smDatWriter, MC_BAD_SEC);
-	} else if(chk != checksum) {	// bad checksum, write might be corrupted
-		write_byte_blocking(pio, smDatWriter, MC_BAD_CHK);
-	} else {	// write performed, no errors
-		write_byte_blocking(pio, smDatWriter, MC_GOOD);
-	}
-	temp = read_byte_blocking(pio, smCmdReader);
-	cancel_ack();	// end-of-protocol, don't need to send more data
-	if(temp != 0x00) {
-		return;
-	}
-
-	memory_card_reset_seen_flag(mc);	// when first write is performed, reset the "is-new" flag of memory card
-	if((uint32_t) sec_msb << 8 | sec_lsb != MC_TEST_SEC) {
-		memory_card_set_sync(mc, true);
-	}
-	memory_card_update_timestamp(mc);
-	printf("WRITE  %.2x%.2x\n", sec_msb, sec_lsb);
-	return;
 }
 
+_Noreturn int simulate_memory_card() {
+	/* We need to allocate the memory for the memcard struct here, or else we'll run out of memory in USB mode */
+	mc = (MemoryCard*)malloc(sizeof(MemoryCard));
+	memset((void*)mc, 0x00, sizeof(MemoryCard));
 
-void process_memcard_id(MemoryCard* mc) {
-	//(void) mc;
-	uint8_t temp;
-	
-	/* queue acks */
-	write_byte_blocking(pio, smDatWriter, MC_ACK1);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
+	queue_init(&mc_data_sync_queue, sizeof(mc_sync_entry_t), 4);
 
-	write_byte_blocking(pio, smDatWriter, MC_ACK2);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
+    critical_section_init(&sync_write_section);
 
-	/* queue ID sequence */
-	write_byte_blocking(pio, smDatWriter, 0x04);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	write_byte_blocking(pio, smDatWriter, 0x00);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	write_byte_blocking(pio, smDatWriter, 0x00);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-
-	write_byte_blocking(pio, smDatWriter, 0x80);
-	temp = read_byte_blocking(pio, smCmdReader);
-	if(temp != 0x00) {
-		return;
-	}
-	cancel_ack();	// end-of-protocol, don't need to send more data
-
-	memory_card_update_timestamp(mc);
-	printf("ID\n");
-	return;
-}
-
-void process_memcard_req(MemoryCard* mc) {
-	bool error = false;
-	write_byte_blocking(pio, smDatWriter, mc->flag_byte);	// queue MC flag
-	uint8_t memcard_cmd = read_byte_blocking(pio, smCmdReader);
-	
-	/* queue MC ID bytes */
-	write_byte_blocking(pio, smDatWriter, MC_ID1);
-	uint8_t fill1 = read_byte_blocking(pio, smCmdReader);
-
-	write_byte_blocking(pio, smDatWriter, MC_ID2);
-	uint8_t fill2 = read_byte_blocking(pio, smCmdReader);
-
-	if(fill1 != 0x00 || fill2 != 0x00) {	// filler is wrong abort protocol
-		return;
-	}
-
-	switch(memcard_cmd) {
-		case MEMCARD_READ:
-			process_memcard_read(mc);
-			break;
-		case MEMCARD_WRITE:
-			process_memcard_write(mc);
-			break;
-		case MEMCARD_ID:
-			process_memcard_id(mc);
-			break;
-		default:
-			printf("\nUnknown MC CMD: %.2x\n", memcard_cmd);
-			break;
-	}
-
-	return;
-}
-
-void blink_led() {
-	board_led_on();
-	sleep_ms(250);
-	board_led_off();
-	sleep_ms(250);
-}
-
-int simulate_memory_card() {
-	MemoryCard mc;
-
-	if(0 == memory_card_init(&mc)) {
-		board_led_on();
-	} else {
-		/* Blink LED forever */
-		while (true) {
-			blink_led();
-		}
-	}
+	memory_card_init(mc);
 
 	printf("\n\nInitializing memory card simulation...\n");
 
 	/* Setup PIO interrupts */
-	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0);
+	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0); // installed on the current core (0)
 	irq_set_enabled(PIO0_IRQ_0, true);
 
 	offsetSelMonitor = pio_add_program(pio, &sel_monitor_program);
@@ -322,23 +319,20 @@ int simulate_memory_card() {
 	uint32_t smMask = (1 << smSelMonitor) | (1 << smCmdReader) | (1 << smAckSender) | (1 << smDatWriter);
 	pio_enable_sm_mask_in_sync(pio, smMask);
 
+	/* Launch memory card thread */
+	printf("\n\nStarting sim thread...\n");
+	multicore_launch_core1(simulation_thread);
+
 	while(true) {
-		uint8_t item = read_byte_blocking(pio, smCmdReader);
-		if(item == MEMCARD_TOP) {
-			process_memcard_req(&mc);
-		} else {
-			cancel_ack();
-		}
-		if(mc.out_of_sync) {
-			if(to_ms_since_boot(get_absolute_time()) - mc.last_operation_timestamp > IDLE_TIMEOUT_BEFORE_SYNC){
-				printf("SYNC	");
-				if(0 == memory_card_sync(&mc)) {
-					memory_card_set_sync(&mc, false);
-					printf("OK\n");
-				} else {
-					printf("FAIL\n");
-				}
-			}
+		if(!queue_is_empty(&mc_data_sync_queue)) {
+			mc_sync_entry_t next_entry;
+			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
+            printf("ADDR 0x%X\n", next_entry.address);
+#ifdef PMC_ENABLE_SYNC_LOG
+            memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue));
+#else
+            memory_card_sync_page(next_entry.address, next_entry.data);
+#endif
 		}
 	}
 }
