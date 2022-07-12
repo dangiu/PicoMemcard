@@ -8,6 +8,7 @@
 #include "hardware/irq.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
+#include "lcd.h"
 
 #define PIN_DAT 5
 #define PIN_CMD 6
@@ -295,6 +296,8 @@ _Noreturn int simulate_memory_card() {
 
 	memory_card_init(mc, current_bank);
 
+    lcd_update_bank_number(current_bank);
+
 	printf("\n\nInitializing memory card simulation...\n");
 
 	/* Setup PIO interrupts */
@@ -331,9 +334,9 @@ _Noreturn int simulate_memory_card() {
 			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
             printf("ADDR 0x%X\n", next_entry.address);
 #ifdef PMC_ENABLE_SYNC_LOG
-            memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue));
+            memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue), current_bank);
 #else
-            memory_card_sync_page(next_entry.address, next_entry.data);
+            memory_card_sync_page(next_entry.address, next_entry.data, current_bank);
 #endif
 		}
 	}

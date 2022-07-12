@@ -3,11 +3,6 @@
 #include "ff.h"
 #include "pico/printf.h"
 
-uint32_t read_mc_image(FIL* file, void* buffer) {
-    uint32_t status = 0;
-
-}
-
 uint32_t memory_card_init(MemoryCard* mc, uint8_t bank_number) {
 	uint32_t status = 0;
     FIL memcard;
@@ -90,7 +85,7 @@ uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t
         f_close(&queue_log);
     }
 
-    return memory_card_sync_page(address, data);
+    return memory_card_sync_page(address, data, queue_level);
 }
 #endif
 
