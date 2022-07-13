@@ -277,22 +277,28 @@ void process_memcard_req(MemoryCard* mc) {
 	return;
 }
 
-void blink_led() {
-	board_led_on();
-	sleep_ms(250);
-	board_led_off();
-	sleep_ms(250);
+void blink_led(int err) {
+	for(int i = 0; i < err; i++) {
+		board_led_on();
+		sleep_ms(50);
+		board_led_off();
+		sleep_ms(200);
+	}
+
+	sleep_ms(1000);
 }
 
 int simulate_memory_card() {
 	MemoryCard mc;
 
-	if(0 == memory_card_init(&mc)) {
+	int status = memory_card_init(&mc);
+
+	if(status == 0) {
 		board_led_on();
 	} else {
 		/* Blink LED forever */
 		while (true) {
-			blink_led();
+			blink_led(status);
 		}
 	}
 

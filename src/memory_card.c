@@ -11,12 +11,19 @@ uint32_t memory_card_init(MemoryCard* mc) {
 	mc->flag_byte = MC_FLAG_BYTE_DEF;
 	if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
 		if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard, MEMCARD_FILE_NAME, LFS_O_RDONLY)) {
-			if(MC_SIZE != lfs_file_read(&lfs, &memcard, mc->data, MC_SIZE)) {
-				status = 1;	// failed to read memory card image
+			lfs_ssize_t size = lfs_file_read(&lfs, &memcard, mc->data, MC_SIZE);
+			
+			if(size < 0) {
+				status = 3; // failed to read memcard file
+			} else if(size == 0) {
+				status = 4; // memcard file is empty
+			} else if(size != MC_SIZE) {
+				status = 5; // memcard file size is incorrect
 			}
+
 			lfs_file_close(&lfs, &memcard);
 		} else  {
-			status = 1;	// failed to open memcard file
+			status = 2;	// failed to open memcard file
 		}
 		lfs_unmount(&lfs);
 	} else {
