@@ -235,18 +235,6 @@ SECTIONS
         __flash_binary_end = .;
     } > FLASH
 
-    /**
-     *  COPY makes it so that we don't allocate memory for this section,
-     *  we only need this to check if we have enough flash left.
-     *  Avoiding allocating this section means that the resulting binary is much smaller
-     */
-    .lfs (COPY) : {
-        . = ALIGN(4096);    /* align to flash sector */
-        __lfs_start = .;
-        KEEP (*(.lfs))
-        __lfs_end = .;
-    } > FLASH
-
     /* stack limit is poorly named, but historically is maximum heap ptr */
     __StackLimit = ORIGIN(RAM) + LENGTH(RAM);
     __StackOneTop = ORIGIN(SCRATCH_X) + LENGTH(SCRATCH_X);
