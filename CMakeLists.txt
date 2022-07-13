@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 add_definitions(-DPICO_OPTIMIZED_DEBUG=1)
 pico_sdk_init()
 
-add_executable(PicoMemcard src/lcd.c inc/lcd.h inc/font.h)
+add_executable(PicoMemcard)
 
 pico_set_linker_script(PicoMemcard ${CMAKE_SOURCE_DIR}/memmap.ld)
 pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
@@ -22,6 +22,7 @@ target_sources(PicoMemcard PUBLIC
     ${CMAKE_SOURCE_DIR}/src/sd_config.c
     ${CMAKE_SOURCE_DIR}/src/memcard_simulator.c
     ${CMAKE_SOURCE_DIR}/src/memory_card.c
+    ${CMAKE_SOURCE_DIR}/src/lcd.c
 )
 
 # Example include
