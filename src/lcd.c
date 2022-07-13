@@ -197,6 +197,7 @@ void draw_string(char *string, uint16_t x, uint16_t y, uint16_t size, uint16_t c
 
 void lcd_update_bank_number(uint8_t bank_number) {
     ssd1331_clear_screen();
+    sleep_ms(10);
     char bank_string[10];
     sprintf(bank_string, "BANK: %d", bank_number);
     draw_string(bank_string, 5, 25, 2, COLOUR_PURPLE);

@@ -5,6 +5,7 @@ include(pico_sdk_import.cmake)
 project(picomemcard_project C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+add_definitions(-DPICO_OPTIMIZED_DEBUG=1)
 pico_sdk_init()
 
 add_executable(PicoMemcard src/lcd.c inc/lcd.h inc/font.h)

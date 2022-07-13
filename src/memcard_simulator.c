@@ -16,6 +16,9 @@
 #define PIN_CLK 8
 #define PIN_ACK 9
 
+#define PIN_BANK_INC 2
+#define PIN_BANK_DEC 3
+
 #define MEMCARD_TOP 0x81
 #define MEMCARD_READ 0x52
 #define MEMCARD_WRITE 0x57
@@ -35,9 +38,12 @@ uint offsetAckSender;
 
 MemoryCard *mc;
 queue_t mc_data_sync_queue;
-critical_section_t sync_write_section;
+
+struct mutex state_machine_tick_mtx;
 
 uint8_t current_bank = 0;
+bool bank_inc_requested = false;
+bool bank_dec_requested = false;
 
 typedef struct {
 	uint16_t address;
@@ -69,9 +75,21 @@ mc_sync_entry_t sync_entry;
 
 _Noreturn void simulation_thread();
 
+void reset_mc_state_machine() {
+    current_state = MC_IDLE;
+    next_state = MC_IDLE;
+    command_state = MC_IDLE;
+    sm_byte_counter = 0;
+    sm_address = 0x0000;
+    checksum = 0x00;
+    recv_checksum = 0x00;
+    sync_entry.address = 0x0000;
+    memset(&sync_entry.data, 0x00, 128);
+}
+
 /**
  * @brief Interrupt handler called when SEL goes high
- * Notifies main thread to reset SMs and sim thread
+ * Restarts PIO SMs and SIO state machine
  */
 void pio0_irq0() {
     // NOTE: This will not block core 1
@@ -85,18 +103,20 @@ void pio0_irq0() {
 	pio_sm_drain_tx_fifo(pio, smDatWriter); // drain instead of clear, so that we empty the OSR
 
     // Reset mc state machine
-    current_state = MC_IDLE;
-    next_state = MC_IDLE;
-    command_state = MC_IDLE;
-    sm_byte_counter = 0;
-    sm_address = 0x0000;
-    checksum = 0x00;
-    recv_checksum = 0x00;
-    sync_entry.address = 0x0000;
-    memset(&sync_entry.data, 0x00, 128);
+    reset_mc_state_machine();
 
 	pio_enable_sm_mask_in_sync(pio, 1 << smCmdReader | 1 << smDatWriter | 1 << smAckSender);
 	pio_interrupt_clear(pio0, 0);
+}
+
+void gpio_irq(uint gpio, uint32_t events) {
+    busy_wait_ms(50); // debounce
+
+    if(gpio == PIN_BANK_INC) {
+        bank_inc_requested = true;
+    } else if (gpio == PIN_BANK_DEC) {
+        bank_dec_requested = true;
+    }
 }
 
 void cancel_ack() {
@@ -105,6 +125,8 @@ void cancel_ack() {
 
 
 void state_machine_tick(uint8_t data) {
+    mutex_enter_blocking(&state_machine_tick_mtx);
+
     bool valid_command = false;
     current_state = next_state;
 
@@ -276,6 +298,25 @@ void state_machine_tick(uint8_t data) {
             next_state = MC_IDLE;
             write_byte_blocking(pio, smDatWriter, 0xff);
     }
+
+    mutex_exit(&state_machine_tick_mtx);
+}
+
+bool is_bank_switch_okay() {
+    // Only switch bank if we're not writing
+    return current_state != MC_EXECUTE_WRITE && next_state != MC_EXECUTE_WRITE && queue_is_empty(&mc_data_sync_queue);
+}
+
+void inc_bank() {
+    if(current_bank < 255) {
+        current_bank++;
+    }
+}
+
+void dec_bank() {
+    if(current_bank > 0) {
+        current_bank--;
+    }
 }
 
 _Noreturn void simulation_thread() {
@@ -286,23 +327,27 @@ _Noreturn void simulation_thread() {
 }
 
 _Noreturn int simulate_memory_card() {
-	/* We need to allocate the memory for the memcard struct here, or else we'll run out of memory in USB mode */
 	mc = (MemoryCard*)malloc(sizeof(MemoryCard));
 	memset((void*)mc, 0x00, sizeof(MemoryCard));
 
 	queue_init(&mc_data_sync_queue, sizeof(mc_sync_entry_t), 4);
-
-    critical_section_init(&sync_write_section);
-
-	memory_card_init(mc, current_bank);
+    mutex_init(&state_machine_tick_mtx);
+	memory_card_load_image(mc, current_bank);
 
     lcd_update_bank_number(current_bank);
 
-	printf("\n\nInitializing memory card simulation...\n");
-
-	/* Setup PIO interrupts */
 	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0); // installed on the current core (0)
 	irq_set_enabled(PIO0_IRQ_0, true);
+
+    gpio_init(PIN_BANK_INC);
+    gpio_set_dir(PIN_BANK_INC, GPIO_IN);
+    gpio_pull_up(PIN_BANK_INC);
+    gpio_set_irq_enabled_with_callback(PIN_BANK_INC, GPIO_IRQ_EDGE_FALL, true, &gpio_irq);
+
+    gpio_init(PIN_BANK_DEC);
+    gpio_set_dir(PIN_BANK_DEC, GPIO_IN);
+    gpio_pull_up(PIN_BANK_DEC);
+    gpio_set_irq_enabled_with_callback(PIN_BANK_DEC, GPIO_IRQ_EDGE_FALL, true, &gpio_irq);
 
 	offsetSelMonitor = pio_add_program(pio, &sel_monitor_program);
 	offsetCmdReader = pio_add_program(pio, &cmd_reader_program);
@@ -332,12 +377,31 @@ _Noreturn int simulate_memory_card() {
 		if(!queue_is_empty(&mc_data_sync_queue)) {
 			mc_sync_entry_t next_entry;
 			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
-            printf("ADDR 0x%X\n", next_entry.address);
 #ifdef PMC_ENABLE_SYNC_LOG
             memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue), current_bank);
 #else
             memory_card_sync_page(next_entry.address, next_entry.data, current_bank);
 #endif
 		}
+
+        if(bank_inc_requested || bank_dec_requested) {
+            if(mutex_try_enter(&state_machine_tick_mtx, NULL)) {
+                if(is_bank_switch_okay() && bank_inc_requested) {
+                    inc_bank();
+                } else if (is_bank_switch_okay() && bank_dec_requested) {
+                    dec_bank();
+                }
+
+                memory_card_load_image(mc, current_bank);
+                lcd_update_bank_number(current_bank);
+
+                bank_inc_requested = false;
+                bank_dec_requested = false;
+
+                reset_mc_state_machine();
+
+                mutex_exit(&state_machine_tick_mtx);
+            }
+        }
 	}
 }

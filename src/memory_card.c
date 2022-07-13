@@ -3,7 +3,7 @@
 #include "ff.h"
 #include "pico/printf.h"
 
-uint32_t memory_card_init(MemoryCard* mc, uint8_t bank_number) {
+uint32_t memory_card_load_image(MemoryCard* mc, uint8_t bank_number) {
 	uint32_t status = 0;
     FIL memcard;
     char file_name[16];
