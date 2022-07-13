@@ -4,6 +4,7 @@
 #include "sd_config.h"
 #include "sd_card.h"
 #include "ff.h"
+#include "lcd.h"
 
 #include "memcard_simulator.h"
 
@@ -11,6 +12,7 @@ int main(void) {
 	stdio_init_all();
 
 	printf("Start\n");
+    lcd_init();
 
 	// Mount the SD card
 	sd_card_t *pSD = sd_get_by_num(0);
