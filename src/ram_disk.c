@@ -2,6 +2,8 @@
 #include "ff.h"
 #include "lfs.h"
 #include "lfs_disk.h"
+#include "memory_card.h"
+#include "config.h"
 
 #define WORK_BUFF_SIZE 1024
 
@@ -108,7 +110,7 @@ uint32_t RAM_disk_import_lfs_memcard() {
 			if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
 				if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard_lfs, MEMCARD_FILE_NAME, LFS_O_RDWR | LFS_O_CREAT)) {
 					lfs_soff_t memcard_lfs_size = lfs_file_size(&lfs, &memcard_lfs); 
-					if(memcard_lfs_size <= MEMCARD_FILE_CONTENT_SIZE) {
+					if(memcard_lfs_size <= MC_SIZE) {
 						
 						/* Mirror stored memory card to virtual disk (only if size is correct) */
 						if(FR_OK == f_open(&memcard_fat, MEMCARD_FILE_NAME, FA_CREATE_NEW | FA_WRITE)) {
@@ -164,7 +166,7 @@ uint32_t RAM_disk_export_lfs_memcard() {
 
 			/* Check virtual disk memory card size */
 			FSIZE_t fat_memcard_size = f_size(&memcard_fat);
-			if(fat_memcard_size <= MEMCARD_FILE_CONTENT_SIZE) {
+			if(fat_memcard_size <= MC_SIZE) {
 				if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
 					/* Prepare LFS memory card */
 					lfs_remove(&lfs, MEMCARD_FILE_NAME);	// remove old memory card file

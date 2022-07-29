@@ -26,11 +26,15 @@ irq set 0		; signal CPU that SEL went high
 ;	waits for sel_monitor signal before starting execution
 sel_high:
 irq wait 4		; wait for SEL monitor to signal SM start
+set x, 7		; set the bit counter
 .wrap_target
+recv:
 wait 0 pin 2	; wait for clock to fall
 wait 1 pin 2	; wait for rising clock edge
-in pins 1		; sample 1 bit form CMD line
-irq clear 1		; signal ACK timer to start
+in pins 1		; sample 1 bit from CMD line
+jmp x-- recv	; receive and count 8 bits
+set x, 7		; reset bit counter - we now have a full byte
+irq clear 5		; trigger ack
 .wrap
 
 .program dat_reader
@@ -77,19 +81,17 @@ out pindirs 1	; output 1 bit (by changing pin direction)
 ; Set pins mapping:
 ;	0 - ACK
 ; Program description:
-;	Sets ACK line low, waits for irq 1 to be lowered by cmd_reader.
-;	Timing is based on the first bit read by cmd_reader.
-.wrap_target
-irq wait 1		[31]	; 32 cycles delay (1 for instruction)
-nop	[23]				; 24 cycles delay (1 for instruction), total of 56 cycles
-set pindirs, 1	[2]		; keep ack low for more than half PSX clock
+;	Sets ACK line low roughly 12uS after 8 clocks have been counted.
 set pindirs, 0
+.wrap_target
+irq wait 5 [30]		; Wait for a byte to be received and delay for 12uS
+set pindirs, 1 [5]	; keep ack low for more than half PSX clock
+set pindirs, 0		; Set ACK pin to Hi-Z
 .wrap
 
 
 % c-sdk {
-#define ACK_CLKDIV 86	// with pico default clock (125 Mhz) results in a frequency around 6 time greater than PSX SPI frequency
-#define ACK_IRQ 1
+#define SLOW_CLKDIV 50	// 125MHz divided down to 2.5 MHz - we need this so we don't count clocks not meant for us on systems like the PS2
 
 static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint pin_sel) {
 	pio_sm_config c = sel_monitor_program_get_default_config(offset);
@@ -99,6 +101,8 @@ static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint 
 	pio_gpio_init(pio, pin_sel);		// SEL pin
 	/* Interrupt Configuration */
 	pio_set_irq0_source_enabled(pio, pis_interrupt0, true);
+	/* Clock configuration */
+	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
@@ -114,6 +118,8 @@ static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint p
 	/* Fifo Configuration */
 	sm_config_set_in_shift(&c, true, true, 8);		// shift ISR to right, autopush every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);	// join RX FIFO
+	/* Clock configuration */
+	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
@@ -152,6 +158,8 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint p
 	/* FIFO Configuration */
 	sm_config_set_out_shift(&c, true, true, 8);		// shift OSR to right, autopull every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);	// join TX FIFO
+	/* Clock configuration */
+	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
@@ -171,7 +179,7 @@ static inline void ack_sender_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_set_consecutive_pindirs(pio, sm, pin_ack, 1, false);		// set ACK pin as input (initial configuration)
 	pio_gpio_init(pio, pin_ack);									// init ACK pin
 	/* Clock Configuration */
-	sm_config_set_clkdiv_int_frac(&c, ACK_CLKDIV, 0x00);
+	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }

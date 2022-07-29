@@ -6,3 +6,10 @@ build/
 
 # FatFS documentation
 ff14b/documents
+
+# VSCode
+.vscode/settings.json
+
+# Clion
+/.idea
+/cmake-build-debug 

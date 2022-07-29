@@ -15,8 +15,9 @@
 #include "lfs_disk.h"
 /* Memcard Simulation */
 #include "memcard_simulator.h"
+/* Global Configuration */
+#include "config.h"
 
-#define TUD_MOUNT_TIMEOUT	3000	// max time (in ms) before giving up on MSC mode and starting memcard simulation
 bool tud_mount_status = false;
 
 void cdc_task(void);
