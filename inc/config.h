@@ -8,12 +8,12 @@
 #define MEMCARD_FILE_NAME	"memcard.mcr"	// name of memory card file image
 
 /* Board targeted by build */
-#define TARGET_PICO
-//#define TARGET_RP2040ZERO
+#define PICO
+//#define RP2040ZERO
 
 
 /* PSX Interface Pinout */
-#ifdef TARGET_PICO
+#ifdef PICO
 	#define PIN_DAT 5
 	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
 	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
@@ -21,7 +21,7 @@
 	#define PIN_ACK 9
 #endif
 
-#ifdef TARGET_RP2040ZERO
+#ifdef RP2040ZERO
 	#define PIN_DAT 9
 	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
 	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD

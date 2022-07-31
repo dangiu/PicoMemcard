@@ -11,6 +11,7 @@ add_executable(PicoMemcard)
 
 pico_set_linker_script(PicoMemcard ${CMAKE_SOURCE_DIR}/memmap.ld)
 pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/psxSPI.pio)
+pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
 
 # Example source

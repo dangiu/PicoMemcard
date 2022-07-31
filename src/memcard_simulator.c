@@ -325,14 +325,14 @@ _Noreturn int simulate_memory_card() {
 	status = memory_card_init(&mc);
 	if(status != MC_OK) {
 		while(true) {
-			led_blink_normal(status);
+			led_blink_error(status);
 			sleep_ms(2000);
 		}
 	}
 	status = memory_card_import(&mc, MEMCARD_FILE_NAME);
 	if(status != MC_OK) {
 		while(true) {
-			led_blink_normal(status);
+			led_blink_error(status);
 			sleep_ms(2000);
 		}
 	}
