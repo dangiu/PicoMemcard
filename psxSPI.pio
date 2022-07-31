@@ -6,12 +6,11 @@
 ; Input pins mapping:
 ;	0 - SEL
 ; Program description:
-;	Monitors SEL line, singnals other SM to start execution when SEL goes low
+;	Monitors SEL line,
 ;	generates interrupt signaling CPU to reset SMs when SEL goes high
 wait 1 pin 0	; wait for initial sync (SEL up)
 .wrap_target
 wait 0 pin 0	; wait for SEL low
-irq clear 4		; signal other SMs SEL is low
 wait 1 pin 0	; wait for SEL to go HIGH
 irq set 0		; signal CPU that SEL went high
 .wrap
@@ -21,11 +20,13 @@ irq set 0		; signal CPU that SEL went high
 ;	0 - CMD
 ;	1 - SEL (not used)
 ;	2 - CLK
+; Set pins mapping;
+;	0 - ACK
 ; Program description:
 ;	Samples CMD line during rising clock edges,
 ;	waits for sel_monitor signal before starting execution
 sel_high:
-irq wait 4		; wait for SEL monitor to signal SM start
+wait 0 pin 1	; wait for SEL to go low
 set x, 7		; set the bit counter
 .wrap_target
 recv:
@@ -34,7 +35,9 @@ wait 1 pin 2	; wait for rising clock edge
 in pins 1		; sample 1 bit from CMD line
 jmp x-- recv	; receive and count 8 bits
 set x, 7		; reset bit counter - we now have a full byte
-irq clear 5		; trigger ack
+nop [30]		; Wait for a byte to be received and delay for 12uS	// TODO remove this and merge with previous instruction
+set pindirs, 1 [5]	; keep ack low for more than half PSX clock
+set pindirs, 0		; Set ACK pin to Hi-Z
 .wrap
 
 .program dat_reader
@@ -45,10 +48,11 @@ irq clear 5		; trigger ack
 ;	3 - CLK
 ; Program description:
 ;	Samples DAT line during rising clock edges,
-;	waits for sel_monitor signal before starting execution.
-;	Can be used for sniffing DAT line used by other hardware
+;	waits for SEL pin to be low before starting execution.
+;	Can be used for sniffing DAT line used by other hardware.
+;	Runs alone on PIO1 has no access to IRQ triggered from PIO0.
 sel_high:
-irq wait 4		; wait for SEL monitor to signal SM start
+wait 0 pin 2	; wait for SEL to go low
 .wrap_target
 wait 0 pin 3	; wait for clock to fall
 wait 1 pin 3	; wait for rising clock edge
@@ -61,7 +65,8 @@ in pins 1		; sample 1 bit form DAT line
 ; Output pins mapping:
 ;	0 - DAT
 ; Input pins mapping:
-;	0 - CLK
+;	0 - SEL
+;	1 - CLK
 ; Program description:
 ;	Outputs bits to the DAT line on falling clock edges.
 ;	waits for sel_monitor signal before starting execution.
@@ -69,26 +74,13 @@ in pins 1		; sample 1 bit form DAT line
 ;	0 -> set pin as input (Hi-Z) -> output a one
 ;	1 -> set pin as output low -> output a zero
 set pindirs, 0	; release DAT line (set pin as input = Hi-Z)
-irq wait 4		; wait for SEL monitor to signal SM start
+wait 0 pin 0	; wait for SEL to go low
 pull			; manual pull in order to stall SM if TX fifo is empty
 .wrap_target
-wait 1 pin 0	; check clock is high
-wait 0 pin 0	; wait for falling clock edge
+wait 1 pin 1	; check clock is high
+wait 0 pin 1	; wait for falling clock edge
 out pindirs 1	; output 1 bit (by changing pin direction)
 .wrap
-
-.program ack_sender
-; Set pins mapping:
-;	0 - ACK
-; Program description:
-;	Sets ACK line low roughly 12uS after 8 clocks have been counted.
-set pindirs, 0
-.wrap_target
-irq wait 5 [30]		; Wait for a byte to be received and delay for 12uS
-set pindirs, 1 [5]	; keep ack low for more than half PSX clock
-set pindirs, 0		; Set ACK pin to Hi-Z
-.wrap
-
 
 % c-sdk {
 #define SLOW_CLKDIV 50	// 125MHz divided down to 2.5 MHz - we need this so we don't count clocks not meant for us on systems like the PS2
@@ -107,9 +99,13 @@ static inline void sel_monitor_program_init(PIO pio, uint sm, uint offset, uint 
 	pio_sm_init(pio, sm, offset, &c);
 }
 
-static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint pin_cmd) {
+static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset, uint pin_cmd, uint pin_ack) {
 	pio_sm_config c = cmd_reader_program_get_default_config(offset);
 	/* Pin Configuration */
+	sm_config_set_set_pins(&c, pin_ack, 1);							// set base SET pin (ACK)
+	pio_sm_set_pins_with_mask(pio, sm, 0x00000000, 1 << pin_ack);	// set ACK pin to low output
+	pio_sm_set_consecutive_pindirs(pio, sm, pin_ack, 1, false);		// set ACK pin as input (initial configuration)
+	pio_gpio_init(pio, pin_ack);									// init ACK pin
 	sm_config_set_in_pins(&c, pin_cmd);
 	pio_sm_set_consecutive_pindirs(pio, sm, pin_cmd, 3, false);
 	pio_gpio_init(pio, pin_cmd);			// CMD pin
@@ -136,25 +132,24 @@ static inline void dat_reader_program_init(PIO pio, uint sm, uint offset, uint p
 	/* Fifo Configuration */
 	sm_config_set_in_shift(&c, true, true, 8);		// shift ISR to right, autopush every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);	// join RX FIFO
+	/* Clock configuration */
+	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
 
-static inline uint8_t read_byte_blocking(PIO pio, uint sm_cmd_reader) {
-	return (uint8_t) (pio_sm_get_blocking(pio, sm_cmd_reader) >> 24);
-}
-
-static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint pin_dat, uint pin_clk) {
+static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint pin_dat, uint pin_sel) {
 	pio_sm_config c = dat_writer_program_get_default_config(offset);
 	/* Pin Configuration */
-	sm_config_set_in_pins(&c, pin_clk);		// set base IN pin (CLK)
+	sm_config_set_in_pins(&c, pin_sel);		// set base IN pin (SEL)
 	sm_config_set_out_pins(&c, pin_dat, 1);	// set base OUT pin (DAT)
 	sm_config_set_set_pins(&c, pin_dat, 1);	// set base SET pin (DAT)
 	pio_sm_set_pins_with_mask(pio, sm, 0x00000000, 1 << pin_dat);	// set DAT pin to low output
 	pio_sm_set_consecutive_pindirs(pio, sm, pin_dat, 1, false);		// set DAT pin as input (initial configuration)
-	pio_sm_set_consecutive_pindirs(pio, sm, pin_clk, 1, false);		// set CLK pin as input
+	pio_sm_set_consecutive_pindirs(pio, sm, pin_sel, 2, false);		// set SEL and CLK pins as input
 	pio_gpio_init(pio, pin_dat);									// init DAT pin
-	pio_gpio_init(pio, pin_clk);									// init CLK pin
+	pio_gpio_init(pio, pin_sel);									// init SEL pin
+	pio_gpio_init(pio, pin_sel + 1);									// init CLK pin
 	/* FIFO Configuration */
 	sm_config_set_out_shift(&c, true, true, 8);		// shift OSR to right, autopull every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);	// join TX FIFO
@@ -164,23 +159,14 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset, uint p
 	pio_sm_init(pio, sm, offset, &c);
 }
 
+static inline uint8_t read_byte_blocking(PIO pio, uint sm) {
+	return (uint8_t) (pio_sm_get_blocking(pio, sm) >> 24);
+}
+
 static inline void write_byte_blocking(PIO pio, uint sm, uint32_t byte) {
 	byte = ~byte & (0x000000ff);	// invert single bit values and mask off
 									// 0s must become ones in order to set pins to output a low signal
 									// 1s must be zeros to set pin to input creating a high-z state
 	pio_sm_put_blocking(pio, sm, byte);	// place byte in tx fifo
-}
-
-static inline void ack_sender_program_init(PIO pio, uint sm, uint offset, uint pin_ack) {
-	pio_sm_config c = ack_sender_program_get_default_config(offset);
-	/* Pin Configuration */
-	sm_config_set_set_pins(&c, pin_ack, 1);							// set base SET pin (ACK)
-	pio_sm_set_pins_with_mask(pio, sm, 0x00000000, 1 << pin_ack);	// set ACK pin to low output
-	pio_sm_set_consecutive_pindirs(pio, sm, pin_ack, 1, false);		// set ACK pin as input (initial configuration)
-	pio_gpio_init(pio, pin_ack);									// init ACK pin
-	/* Clock Configuration */
-	sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
-	/* Initialize SM */
-	pio_sm_init(pio, sm, offset, &c);
 }
 %}

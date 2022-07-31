@@ -15,6 +15,8 @@
 #include "lfs_disk.h"
 /* Memcard Simulation */
 #include "memcard_simulator.h"
+/* LED control */
+#include "led.h"
 /* Global Configuration */
 #include "config.h"
 
@@ -25,6 +27,7 @@ void cdc_task(void);
 /*------------- MAIN -------------*/
 int main(void) {
 	stdio_init_all();
+	led_init();
 
 	lfs_t lfs;
 	
@@ -46,7 +49,7 @@ int main(void) {
 		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status)
 			break;
 	}
-		
+	
 	/* Pico powered by PSX, initialize memory card simulation */
 	simulate_memory_card();	
 
