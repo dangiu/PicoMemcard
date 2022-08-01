@@ -108,7 +108,7 @@ uint32_t RAM_disk_import_lfs_memcard() {
 			
 			/* Check stored memory card size */
 			if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
-				if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard_lfs, MEMCARD_FILE_NAME, LFS_O_RDWR | LFS_O_CREAT)) {
+				if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard_lfs, MEMCARD_FILE_NAME, LFS_O_RDWR)) {
 					lfs_soff_t memcard_lfs_size = lfs_file_size(&lfs, &memcard_lfs); 
 					if(memcard_lfs_size > 0 && memcard_lfs_size <= MC_SIZE) {
 						
