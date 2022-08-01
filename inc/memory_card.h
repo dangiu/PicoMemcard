@@ -4,13 +4,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define MEMCARD_FILE_NAME "MEMCARD.MCR"     // name of memcard file inside system
-#define MEMCARD_FILE_CONTENT_SIZE 131072	// size of memcard file content in bytes (128KB)
-
-#define MC_SEC_SIZE 128			// size of single sector in bytes
-#define MC_SIZE MC_SEC_SIZE * 1024		// size of memory card in bytes
-#define MC_MAX_SEC 0x3ff
-#define MC_FLAG_BYTE_DEF 0x08	// bit 3 set = new memory card inserted
+#define MC_SEC_SIZE			128		// size of single sector in bytes
+#define MC_SEC_COUNT		1024	// number of sector in one memory card
+#define MC_SIZE				MC_SEC_SIZE * MC_SEC_COUNT		// size of memory card in bytes
+#define MC_FLAG_BYTE_DEF	0x08	// bit 3 set = new memory card inserted
 
 #define MC_ID1 0x5A
 #define MC_ID2 0x5D
@@ -22,17 +19,29 @@
 #define MC_BAD_SEC 0xFF
 #define MC_BAD_CHK 0x4E
 
+/* Error codes */
+#define MC_OK				0
+#define MC_MOUNT_ERR		1
+#define MC_FILE_OPEN_ERR	2
+#define MC_FILE_READ_ERR	3
+#define MC_FILE_WRITE_ERR	4
+#define MC_FILE_SIZE_ERR	5
+#define MC_NO_INIT			6
+
 typedef struct {
 	uint8_t flag_byte;
-	uint8_t data[MC_SIZE];
-} MemoryCard;
+	uint8_t* data;
+} memory_card_t;
 
-uint32_t memory_card_init(MemoryCard* mc);
-bool memory_card_is_sector_valid(MemoryCard* mc, uint32_t sector);
-uint8_t* memory_card_get_sector_ptr(MemoryCard* mc, uint32_t sector);
+
+uint32_t memory_card_init(memory_card_t* mc);
+uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name);
+bool memory_card_is_sector_valid(memory_card_t* mc, uint32_t sector);
+uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, uint32_t sector);
+void memory_card_update_timestamp(memory_card_t* mc);
+void memory_card_reset_seen_flag(memory_card_t* mc);
+
 uint32_t memory_card_sync_page(uint16_t address, uint8_t* data);
-uint32_t memory_card_reset_seen_flag(MemoryCard* mc);
-
 #ifdef PMC_ENABLE_SYNC_LOG
 uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_depth);
 #endif
