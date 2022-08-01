@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "config.h"
 
 #define MC_SEC_SIZE			128		// size of single sector in bytes
 #define MC_SEC_COUNT		1024	// number of sector in one memory card
