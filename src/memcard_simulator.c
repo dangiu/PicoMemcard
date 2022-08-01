@@ -348,8 +348,6 @@ _Noreturn int simulate_memory_card() {
 	offsetDatReader = pio_add_program(pio0, &dat_reader_program);
 	offsetDatWriter = pio_add_program(pio0, &dat_writer_program);
 
-	/* TODO never initialized datReader, that explains why it never worked */
-
 	smSelMonitor = pio_claim_unused_sm(pio0, true);
 	smCmdReader = pio_claim_unused_sm(pio0, true);
 	smDatReader = pio_claim_unused_sm(pio0, true);
