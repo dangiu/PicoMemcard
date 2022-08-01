@@ -34,17 +34,13 @@ typedef struct {
 	uint8_t* data;
 } memory_card_t;
 
+typedef uint16_t sector_t;
 
 uint32_t memory_card_init(memory_card_t* mc);
 uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name);
-bool memory_card_is_sector_valid(memory_card_t* mc, uint32_t sector);
-uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, uint32_t sector);
-void memory_card_update_timestamp(memory_card_t* mc);
+bool memory_card_is_sector_valid(memory_card_t* mc, sector_t sector);
+uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, sector_t sector);
 void memory_card_reset_seen_flag(memory_card_t* mc);
-
-uint32_t memory_card_sync_page(uint16_t address, uint8_t* data);
-#ifdef PMC_ENABLE_SYNC_LOG
-uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_depth);
-#endif
+uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector);
 
 #endif

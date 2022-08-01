@@ -46,27 +46,40 @@ uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name) {
 	return status;
 }
 
-bool memory_card_is_sector_valid(memory_card_t* mc, uint32_t sector) {
+bool memory_card_is_sector_valid(memory_card_t* mc, sector_t sector) {
 	(void) mc;
 	if(sector < 0 || sector >= MC_SEC_COUNT)
 		return false;
 	return true;
 }
 
-uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, uint32_t sector) {
+uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, sector_t sector) {
 	if(mc)
 		return &mc->data[sector * MC_SEC_SIZE];
 	return NULL;
 }
 
-uint32_t memory_card_sync_page(uint16_t address, uint8_t* data) {
-	uint32_t status = 0;
+void memory_card_reset_seen_flag(memory_card_t* mc) {
+	if(mc)
+		mc->flag_byte &= ~(1 << 3);
+}
+
+/***
+ *	Sync memory card modified sectors back into flash storage.
+ *	Does not create concurrency problem as it only reads from the in-RAM copy.
+ * 	If a sector is being synced while the in-RAM copy is being modified,
+ * 	then there is a transient loss of consistency. Consistency is eventually
+ * 	resolved since there will be another entry further down the queue
+ * 	enforcing the sync for that same sector to occurr once again.
+ */
+uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector) {
+	uint32_t status = MC_OK;
 	FIL memcard;
 
 	if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ | FA_WRITE)) {
 		UINT bytes_written;
-		f_lseek(&memcard, (address * MC_SEC_SIZE));
-		if(FR_OK == f_write(&memcard, data, MC_SEC_SIZE, &bytes_written)) {
+		f_lseek(&memcard, (sector * MC_SEC_SIZE));
+		if(FR_OK == f_write(&memcard, &mc->data[sector * MC_SEC_SIZE], MC_SEC_SIZE, &bytes_written)) {
 			if(MC_SEC_SIZE != bytes_written) {
 				status = MC_FILE_SIZE_ERR;
 			}
@@ -76,26 +89,8 @@ uint32_t memory_card_sync_page(uint16_t address, uint8_t* data) {
 
 		f_close(&memcard);
 	} else {
-		status = 1;
+		status = MC_FILE_OPEN_ERR;
 	}
 
 	return status;
-}
-
-#ifdef PMC_ENABLE_SYNC_LOG
-uint32_t memory_card_sync_page_with_log(uint16_t address, uint8_t* data, uint8_t queue_level) {
-	FIL queue_log;
-
-	if(FR_OK == f_open(&queue_log, "queue.log", FA_OPEN_APPEND | FA_WRITE)) {
-		f_printf(&queue_log, "SYNC SECTOR [0x%X]: Queue depth [%d]\n", address, queue_level);
-		f_close(&queue_log);
-	}
-
-	return memory_card_sync_page(address, data);
-}
-#endif
-
-void memory_card_reset_seen_flag(memory_card_t* mc) {
-	if(mc)
-		mc->flag_byte &= ~(1 << 3);
 }

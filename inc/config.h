@@ -31,7 +31,4 @@
 /* SD Card Configuration */
 #define BLOCK_SIZE 512				// SD card communicate using only 512 block size for consistency
 
-/* DEBUG Settings */
-#define PMC_ENABLE_SYNC_LOG
-
 #endif

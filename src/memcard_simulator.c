@@ -31,12 +31,7 @@ uint offsetDatWriter;
 uint offsetDatReader;
 
 memory_card_t mc;
-queue_t mc_data_sync_queue;
-
-typedef struct {
-	uint16_t address;
-	uint8_t data[MC_SEC_SIZE];
-} mc_sync_entry_t;
+queue_t mc_sector_sync_queue;
 
 enum states {
 	MC_IDLE,
@@ -58,11 +53,9 @@ uint8_t command_state = MC_IDLE;
 uint8_t checksum = 0x00;
 uint8_t recv_checksum = 0x00;
 uint8_t sm_byte_counter = 0;
-uint16_t sm_address = 0x0000;
+sector_t sm_address = 0x0000;
 uint16_t sw_status = 0x0000;	// pad switch status
 uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
-
-mc_sync_entry_t sync_entry;
 
 /**
  * @brief Interrupt handler called when SEL goes high
@@ -89,8 +82,6 @@ void pio0_irq0() {
 	checksum = 0x00;
 	recv_checksum = 0x00;
 	sw_status = 0x0000;
-	sync_entry.address = 0x0000;
-	memset(&sync_entry.data, 0x00, 128);
 
 	pio_enable_sm_mask_in_sync(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
 	pio_interrupt_clear(pio0, 0);
@@ -204,7 +195,6 @@ void state_machine_tick(uint8_t data) {
 			} else if (sm_byte_counter == 2) {
 				// LSB
 				sm_address |= data;
-				sync_entry.address = sm_address;
 				if(command_state == MC_EXECUTE_READ) {
 					write_byte_blocking(pio0, smDatWriter, MC_ACK1);
 				} else {
@@ -268,7 +258,6 @@ void state_machine_tick(uint8_t data) {
 				if(sm_byte_counter < MC_SEC_SIZE) {
 					checksum ^= data;
 					sec_ptr[sm_byte_counter] = data;
-					sync_entry.data[sm_byte_counter] = data;
 					write_byte_blocking(pio0, smDatWriter, data);
 				} else {
 					if (sm_byte_counter == MC_SEC_SIZE) {
@@ -280,7 +269,7 @@ void state_machine_tick(uint8_t data) {
 						write_byte_blocking(pio0, smDatWriter, MC_ACK2);
 						memory_card_reset_seen_flag(&mc);
 						if(sm_address != MC_TEST_SEC) {
-							queue_add_blocking(&mc_data_sync_queue, &sync_entry);
+							queue_add_blocking(&mc_sector_sync_queue, &sm_address);
 						}
 						next_state = MC_END;
 					}
@@ -318,7 +307,7 @@ _Noreturn void simulation_thread() {
 }
 
 _Noreturn int simulate_memory_card() {
-	queue_init(&mc_data_sync_queue, sizeof(mc_sync_entry_t), 4);
+	queue_init(&mc_sector_sync_queue, sizeof(sector_t), MC_SEC_COUNT);	// enough space to do complete MC copy
 
 	uint32_t status;
 	status = memory_card_init(&mc);
@@ -367,15 +356,15 @@ _Noreturn int simulate_memory_card() {
 	multicore_launch_core1(simulation_thread);
 
 	while(true) {
-		if(!queue_is_empty(&mc_data_sync_queue)) {
-			mc_sync_entry_t next_entry;
-			queue_remove_blocking(&mc_data_sync_queue, &next_entry);
-			printf("ADDR 0x%X\n", next_entry.address);
-#ifdef PMC_ENABLE_SYNC_LOG
-			memory_card_sync_page_with_log(next_entry.address, next_entry.data, queue_get_level(&mc_data_sync_queue));
-#else
-			memory_card_sync_page(next_entry.address, next_entry.data);
-#endif
+		if(!queue_is_empty(&mc_sector_sync_queue)) {
+			led_output_sync_status(true);
+			uint16_t next_entry;
+			queue_remove_blocking(&mc_sector_sync_queue, &next_entry);
+			status = memory_card_sync_sector(&mc, next_entry);
+			if(status != MC_OK)
+				led_blink_error(status);
+		} else {
+			led_output_sync_status(false);
 		}
 	}
 }
