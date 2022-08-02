@@ -31,6 +31,20 @@
 #endif
 
 /* SD Card Configuration */
-#define BLOCK_SIZE 512				// SD card communicate using only 512 block size for consistency
+#define BLOCK_SIZE	512				// SD card communicate using only 512 block size for consistency
+#define BAUD_RATE	5000 * 1000
+#ifdef PICO
+	#define PIN_MISO	16
+	#define PIN_MOSI	19
+	#define PIN_SCK		18
+	#define PIN_SS		17
+#endif
+
+#ifdef RP2040ZERO
+	#define PIN_MISO	0
+	#define PIN_MOSI	3
+	#define PIN_SCK		2
+	#define PIN_SS		1
+#endif
 
 #endif
