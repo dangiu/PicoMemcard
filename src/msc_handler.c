@@ -2,10 +2,13 @@
 #include "tusb.h"
 #include "ram_disk.h"
 #include "pico/time.h"
+#include "config.h"
 
 #define VID "PicoMC"
 #define PID "Mass Storage"
 #define REV "1.0"
+
+alarm_id_t alarm_id = -2;	// -1 used to indicate error, -2 indicates uninitialized
 
 /* invoked when received SCSI_CMD_INQUIRY */
 void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4])
@@ -85,16 +88,23 @@ bool tud_msc_is_writable_cb (uint8_t lun)
   return true;
 }
 
+int64_t sync_callback(alarm_id_t id, void *user_data) {
+	RAM_disk_export_lfs_memcard();
+}
+
 /* callback invoked when received WRITE10 command */
 // Process data in buffer to disk's storage and return number of written bytes
 int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize)
 {
 	(void) lun;
-
 	if(lba < 0 || lba >= DISK_BLOCK_NUM) return -1;	// invalid sector
 	if(bufsize != DISK_BLOCK_SIZE) return -1;		// invalid transfer unit
 	if(offset != 0) return -1;						// writes must be sector aligned
+	if(alarm_id >= 0)
+		if(cancel_alarm(alarm_id))
+			alarm_id = -2;
 	uint32_t status = RAM_disk_write(buffer, lba, 1);
+	alarm_id = add_alarm_in_ms(MSC_WRITE_SYNC_TIMEOUT, sync_callback, NULL, false);
 	if(status != RES_OK) return -1;					// write failed
 	return (int32_t) bufsize;
 }

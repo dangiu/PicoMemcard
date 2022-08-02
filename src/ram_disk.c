@@ -3,6 +3,7 @@
 #include "lfs.h"
 #include "lfs_disk.h"
 #include "memory_card.h"
+#include "config.h"
 
 #define WORK_BUFF_SIZE 1024
 
@@ -109,7 +110,7 @@ uint32_t RAM_disk_import_lfs_memcard() {
 			if(LFS_ERR_OK == lfs_mount(&lfs, &LFS_CFG)) {
 				if(LFS_ERR_OK == lfs_file_open(&lfs, &memcard_lfs, MEMCARD_FILE_NAME, LFS_O_RDWR)) {
 					lfs_soff_t memcard_lfs_size = lfs_file_size(&lfs, &memcard_lfs); 
-					if(memcard_lfs_size <= MC_SIZE) {
+					if(memcard_lfs_size > 0 && memcard_lfs_size <= MC_SIZE) {
 						
 						/* Mirror stored memory card to virtual disk (only if size is correct) */
 						if(FR_OK == f_open(&memcard_fat, MEMCARD_FILE_NAME, FA_CREATE_NEW | FA_WRITE)) {
