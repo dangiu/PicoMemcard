@@ -23,7 +23,7 @@ uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name) {
 		mc->flag_byte = MC_FLAG_BYTE_DEF;
 		sd_card_t *p_sd = sd_get_by_num(0);
 		if(FR_OK == f_mount(&p_sd->fatfs, "", 1)) {
-			if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ)) {
+			if(FR_OK == f_open(&memcard, file_name, FA_READ)) {
 				UINT bytes_read;
 				if(FR_OK == f_read(&memcard, mc->data, MC_SIZE, &bytes_read)) {
 					if(MC_SIZE != bytes_read) {
@@ -72,11 +72,11 @@ void memory_card_reset_seen_flag(memory_card_t* mc) {
  * 	resolved since there will be another entry further down the queue
  * 	enforcing the sync for that same sector to occurr once again.
  */
-uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector) {
+uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector, uint8_t* file_name) {
 	uint32_t status = MC_OK;
 	FIL memcard;
 
-	if(FR_OK == f_open(&memcard, MEMCARD_FILE_NAME, FA_READ | FA_WRITE)) {
+	if(FR_OK == f_open(&memcard, file_name, FA_READ | FA_WRITE)) {
 		UINT bytes_written;
 		f_lseek(&memcard, (sector * MC_SEC_SIZE));
 		if(FR_OK == f_write(&memcard, &mc->data[sector * MC_SEC_SIZE], MC_SEC_SIZE, &bytes_written)) {

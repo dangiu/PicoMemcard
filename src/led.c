@@ -70,3 +70,19 @@ void led_blink_error(int amount) {
 		sleep_ms(500);
 	}
 }
+
+void led_output_mc_change() {
+	#ifdef PICO
+	gpio_put(PICO_LED_PIN, false);
+	sleep_ms(100);
+	gpio_put(PICO_LED_PIN, true);
+	sleep_ms(100);
+	gpio_put(PICO_LED_PIN, false);
+	sleep_ms(100);
+	#endif
+	#ifdef RP2040ZERO
+	ws2812_put_rgb(0, 0, 255);
+	sleep_ms(100);
+	ws2812_put_rgb(0, 0, 0);
+	#endif
+}

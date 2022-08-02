@@ -31,6 +31,10 @@ uint offsetDatWriter;
 uint offsetDatReader;
 
 memory_card_t mc;
+uint32_t mc_index = 0;
+bool request_next_mc = false;
+bool request_prev_mc = false;
+mutex_t mutex_sm_tick;
 queue_t mc_sector_sync_queue;
 
 enum states {
@@ -57,13 +61,7 @@ sector_t sm_address = 0x0000;
 uint16_t sw_status = 0x0000;	// pad switch status
 uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
 
-/**
- * @brief Interrupt handler called when SEL goes high
- * Notifies main thread to reset SMs and sim thread
- */
-void pio0_irq0() {
-	// NOTE: This will not block core 1
-	// Reset the state machines and sim thread, transaction has ended
+void restart_pio_sm() {
 	pio_set_sm_mask_enabled(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter, false);
 	pio_restart_sm_mask(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
 	pio_sm_exec(pio0, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
@@ -84,6 +82,34 @@ void pio0_irq0() {
 	sw_status = 0x0000;
 
 	pio_enable_sm_mask_in_sync(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
+}
+
+/**
+ * @brief Simulates memory card being briefly unplugged and replugged
+ */
+void simulate_mc_reconnect() {
+	pio_sm_set_enabled(pio0, smSelMonitor, false);
+	pio_restart_sm_mask(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
+	pio_sm_exec(pio0, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
+	pio_sm_exec(pio0, smDatReader, pio_encode_jmp(offsetDatReader));	// restart smDatReader PC
+	pio_sm_exec(pio0, smDatWriter, pio_encode_jmp(offsetDatWriter));	// restart smDatWriter PC
+	pio_sm_clear_fifos(pio0, smCmdReader);
+	pio_sm_clear_fifos(pio0, smDatReader);
+	pio_sm_drain_tx_fifo(pio0, smDatWriter); // drain instead of clear, so that we empty the OSR
+	printf("Simulating reconnection...\n");
+	led_output_mc_change();
+	sleep_ms(MC_RECONNECT_TIME);
+	pio_sm_set_enabled(pio0, smSelMonitor, true);
+}
+
+/**
+ * @brief Interrupt handler called when SEL goes high
+ * Notifies main thread to reset SMs and sim thread
+ */
+void pio0_irq0() {
+	// NOTE: This will not block core 1
+	// Reset the state machines and sim thread, transaction has ended
+	restart_pio_sm();
 	pio_interrupt_clear(pio0, 0);
 }
 
@@ -140,8 +166,14 @@ void state_machine_tick(uint8_t data) {
 					break;
 				case 2:
 					sw_status = sw_status | (read_byte_blocking(pio0, smDatReader) << 8);
-					if(sw_status == (START & SELECT & TRIANGLE))	// perform manual sync
-						printf("EUREKA\n");
+					switch(sw_status) {
+						case START & SELECT & UP:
+							request_next_mc = true;
+							break;
+						case START & SELECT & DOWN:
+							request_prev_mc = true;
+							break;
+					}
 					break;
 				default:
 					next_state = MC_IDLE;
@@ -300,14 +332,36 @@ void state_machine_tick(uint8_t data) {
 }
 
 _Noreturn void simulation_thread() {
+	printf("Simulation core begin...\n");
 	while(true) {
+		mutex_enter_blocking(&mutex_sm_tick);
 		uint8_t item = read_byte_blocking(pio0, smCmdReader);
 		state_machine_tick(item);
+		mutex_exit(&mutex_sm_tick);
 	}
 }
 
+bool is_mc_switch_safe() {
+	return (current_state != MC_EXECUTE_WRITE && next_state != MC_EXECUTE_WRITE && queue_is_empty(&mc_sector_sync_queue));
+}
+
+void mc_index_to_name(uint32_t mc_index, uint8_t* buffer) {
+	snprintf(buffer, MAX_MC_FILENAME_LEN + 1, "%d.mcr", mc_index);	// +1 for null terminator character
+}
+
+bool change_mc_index(uint32_t new_index) {
+	if(new_index == mc_index)
+		return false;
+	if(new_index < 0 || new_index > MAX_MC_INDEX)
+		return false;
+	mc_index = new_index;
+	return true;
+}
+
 _Noreturn int simulate_memory_card() {
+	mutex_init(&mutex_sm_tick);
 	queue_init(&mc_sector_sync_queue, sizeof(sector_t), MC_SEC_COUNT);	// enough space to do complete MC copy
+	uint8_t mc_file_name[MAX_MC_FILENAME_LEN + 1];	// +1 for null terminator character
 
 	uint32_t status;
 	status = memory_card_init(&mc);
@@ -317,7 +371,8 @@ _Noreturn int simulate_memory_card() {
 			sleep_ms(2000);
 		}
 	}
-	status = memory_card_import(&mc, MEMCARD_FILE_NAME);
+	mc_index_to_name(mc_index, mc_file_name);
+	status = memory_card_import(&mc, mc_file_name);
 	if(status != MC_OK) {
 		while(true) {
 			led_blink_error(status);
@@ -352,7 +407,6 @@ _Noreturn int simulate_memory_card() {
 	pio_enable_sm_mask_in_sync(pio0, smMask);
 
 	/* Launch memory card thread */
-	printf("\n\nStarting simulation core...\n");
 	multicore_launch_core1(simulation_thread);
 
 	while(true) {
@@ -360,11 +414,40 @@ _Noreturn int simulate_memory_card() {
 			led_output_sync_status(true);
 			uint16_t next_entry;
 			queue_remove_blocking(&mc_sector_sync_queue, &next_entry);
-			status = memory_card_sync_sector(&mc, next_entry);
+			status = memory_card_sync_sector(&mc, next_entry, mc_file_name);
 			if(status != MC_OK)
 				led_blink_error(status);
 		} else {
 			led_output_sync_status(false);
+		}
+		if(request_next_mc || request_prev_mc) {
+			if(is_mc_switch_safe()) {	// check that switch is safe before getting the lock
+				mutex_enter_blocking(&mutex_sm_tick);
+				if(is_mc_switch_safe) {	// and also after
+					if(request_next_mc && request_prev_mc) {
+						/* requested change in both directions, do nothing */
+						request_next_mc = false;
+						request_prev_mc = false;
+					} else {
+						uint32_t new_index = mc_index;
+						if(request_next_mc) {
+							++new_index;
+						} else if(request_prev_mc) {
+							--new_index;
+						}
+						if(change_mc_index(new_index)) {
+							mc_index_to_name(mc_index, mc_file_name);
+							status = memory_card_import(&mc, mc_file_name);
+							if(status != MC_OK)
+								led_blink_error(status);
+							simulate_mc_reconnect();
+						}
+						request_next_mc = false;
+						request_prev_mc = false;
+					}
+				}
+				mutex_exit(&mutex_sm_tick);
+			}
 		}
 	}
 }

@@ -41,6 +41,6 @@ uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name);
 bool memory_card_is_sector_valid(memory_card_t* mc, sector_t sector);
 uint8_t* memory_card_get_sector_ptr(memory_card_t* mc, sector_t sector);
 void memory_card_reset_seen_flag(memory_card_t* mc);
-uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector);
+uint32_t memory_card_sync_sector(memory_card_t* mc, sector_t sector, uint8_t* file_name);
 
 #endif

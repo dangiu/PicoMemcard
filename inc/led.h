@@ -6,5 +6,6 @@
 void led_init();
 void led_output_sync_status(bool out_of_sync);
 void led_blink_error(int amount);
+void led_output_mc_change();
 
 #endif
