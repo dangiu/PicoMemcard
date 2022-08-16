@@ -10,8 +10,12 @@
 #define MC_RECONNECT_TIME	1000				// time (in ms) the memory card stays disconnected when simulating reconnection
 
 /* Board targeted by build */
+//#define PICO
+//#define WAVESHARE_RP2040_ZERO
+//#define ADAFRUIT_QTPY_RP2040
+#ifndef PICO_BOARD
 #define PICO
-//#define RP2040ZERO
+#endif
 
 /* PSX Interface Pinout */
 #ifdef PICO
@@ -22,13 +26,23 @@
 	#define PIN_ACK 9
 #endif
 
-#ifdef RP2040ZERO
+#ifdef WAVESHARE_RP2040_ZERO
 	#define PIN_DAT 9
 	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
 	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
 	#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
 	#define PIN_ACK 13
 #endif
+
+#ifdef ADAFRUIT_QTPY_RP2040
+	#define PIN_DAT 26
+	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
+	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
+	#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
+	#define PIN_ACK 24
+#endif
+
+
 
 /* SD Card Configuration */
 #define BLOCK_SIZE	512				// SD card communicate using only 512 block size for consistency
@@ -40,11 +54,18 @@
 	#define PIN_SS		17
 #endif
 
-#ifdef RP2040ZERO
+#ifdef WAVESHARE_RP2040_ZERO
 	#define PIN_MISO	0
 	#define PIN_MOSI	3
 	#define PIN_SCK		2
 	#define PIN_SS		1
+#endif
+
+#ifdef ADAFRUIT_QTPY_RP2040
+	#define PIN_MISO	3
+	#define PIN_MOSI	4
+	#define PIN_SCK		6
+	#define PIN_SS		5
 #endif
 
 #endif
