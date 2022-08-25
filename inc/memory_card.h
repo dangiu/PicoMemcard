@@ -22,12 +22,11 @@
 
 /* Error codes */
 #define MC_OK				0
-#define MC_MOUNT_ERR		1
-#define MC_FILE_OPEN_ERR	2
-#define MC_FILE_READ_ERR	3
-#define MC_FILE_WRITE_ERR	4
-#define MC_FILE_SIZE_ERR	5
-#define MC_NO_INIT			6
+#define MC_FILE_OPEN_ERR	1
+#define MC_FILE_READ_ERR	2
+#define MC_FILE_WRITE_ERR	3
+#define MC_FILE_SIZE_ERR	4
+#define MC_NO_INIT			5
 
 typedef struct {
 	uint8_t flag_byte;

@@ -8,6 +8,8 @@
 #include "hardware/irq.h"
 #include "psxSPI.pio.h"
 #include "memory_card.h"
+#include "sd_config.h"
+#include "memcard_manager.h"
 #include "config.h"
 #include "pad.h"
 #include "led.h"
@@ -31,7 +33,6 @@ uint offsetDatWriter;
 uint offsetDatReader;
 
 memory_card_t mc;
-uint32_t mc_index = 0;
 bool request_next_mc = false;
 bool request_prev_mc = false;
 mutex_t mutex_sm_tick;
@@ -345,25 +346,19 @@ bool is_mc_switch_safe() {
 	return (current_state != MC_EXECUTE_WRITE && next_state != MC_EXECUTE_WRITE && queue_is_empty(&mc_sector_sync_queue));
 }
 
-void mc_index_to_name(uint32_t mc_index, uint8_t* buffer) {
-	snprintf(buffer, MAX_MC_FILENAME_LEN + 1, "%d.mcr", mc_index);	// +1 for null terminator character
-}
-
-bool change_mc_index(uint32_t new_index) {
-	if(new_index == mc_index)
-		return false;
-	if(new_index < 0 || new_index > MAX_MC_INDEX)
-		return false;
-	mc_index = new_index;
-	return true;
-}
-
 _Noreturn int simulate_memory_card() {
 	mutex_init(&mutex_sm_tick);
 	queue_init(&mc_sector_sync_queue, sizeof(sector_t), MC_SEC_COUNT);	// enough space to do complete MC copy
 	uint8_t mc_file_name[MAX_MC_FILENAME_LEN + 1];	// +1 for null terminator character
 
-	uint32_t status;
+	/* Mount and test SD card filesystem */
+	sd_card_t *p_sd = sd_get_by_num(0);
+	if(FR_OK != f_mount(&p_sd->fatfs, "", 1)) {
+		while(true)
+			led_blink_error(1);
+	}
+
+	uint32_t status;	
 	status = memory_card_init(&mc);
 	if(status != MC_OK) {
 		while(true) {
@@ -371,7 +366,13 @@ _Noreturn int simulate_memory_card() {
 			sleep_ms(2000);
 		}
 	}
-	mc_index_to_name(mc_index, mc_file_name);
+	status = memcard_manager_get_first(mc_file_name);	// get first memory card
+	if(status != MM_OK) {
+		while(true) {
+			led_blink_error(status);
+			sleep_ms(1000);
+		}
+	}
 	status = memory_card_import(&mc, mc_file_name);
 	if(status != MC_OK) {
 		while(true) {
@@ -421,32 +422,36 @@ _Noreturn int simulate_memory_card() {
 			led_output_sync_status(false);
 		}
 		if(request_next_mc || request_prev_mc) {
-			if(is_mc_switch_safe()) {	// check that switch is safe before getting the lock
-				mutex_enter_blocking(&mutex_sm_tick);
-				if(is_mc_switch_safe) {	// and also after
-					if(request_next_mc && request_prev_mc) {
-						/* requested change in both directions, do nothing */
-						request_next_mc = false;
-						request_prev_mc = false;
-					} else {
-						uint32_t new_index = mc_index;
-						if(request_next_mc) {
-							++new_index;
-						} else if(request_prev_mc) {
-							--new_index;
-						}
-						if(change_mc_index(new_index)) {
-							mc_index_to_name(mc_index, mc_file_name);
+			if(request_next_mc && request_prev_mc) {
+				/* requested change in both directions, do nothing */
+				request_next_mc = false;
+				request_prev_mc = false;
+			} else {
+				uint32_t status;
+				uint8_t new_file_name[MAX_MC_FILENAME_LEN + 1];
+				if(request_next_mc)
+					status = memcard_manager_get_next(mc_file_name, new_file_name);
+				else if (request_prev_mc)
+					status = memcard_manager_get_prev(mc_file_name, new_file_name);
+				if(status != MM_OK) {
+					led_output_end_mc_list();
+					request_next_mc = false;
+					request_prev_mc = false;
+				} else {
+					if(is_mc_switch_safe()) {	// check that switch is safe before getting the lock
+						mutex_enter_blocking(&mutex_sm_tick);
+						if(is_mc_switch_safe) {	// and also after
+							strcpy(mc_file_name, new_file_name);
 							status = memory_card_import(&mc, mc_file_name);
 							if(status != MC_OK)
 								led_blink_error(status);
 							simulate_mc_reconnect();
+							request_next_mc = false;
+							request_prev_mc = false;
 						}
-						request_next_mc = false;
-						request_prev_mc = false;
+						mutex_exit(&mutex_sm_tick);
 					}
 				}
-				mutex_exit(&mutex_sm_tick);
 			}
 		}
 	}
