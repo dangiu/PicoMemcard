@@ -3,7 +3,6 @@
 #include "config.h"
 #include "ff.h"
 #include "pico/stdlib.h"
-#include "sd_config.h"
 
 uint32_t memory_card_init(memory_card_t* mc) {
 	if(!mc)
@@ -21,23 +20,18 @@ uint32_t memory_card_import(memory_card_t* mc, uint8_t* file_name) {
 
 	if(mc) {
 		mc->flag_byte = MC_FLAG_BYTE_DEF;
-		sd_card_t *p_sd = sd_get_by_num(0);
-		if(FR_OK == f_mount(&p_sd->fatfs, "", 1)) {
-			if(FR_OK == f_open(&memcard, file_name, FA_READ)) {
-				UINT bytes_read;
-				if(FR_OK == f_read(&memcard, mc->data, MC_SIZE, &bytes_read)) {
-					if(MC_SIZE != bytes_read) {
-						status = MC_FILE_READ_ERR;
-					}
-				} else {
-					status = MC_FILE_SIZE_ERR;
+		if(FR_OK == f_open(&memcard, file_name, FA_READ)) {
+			UINT bytes_read;
+			if(FR_OK == f_read(&memcard, mc->data, MC_SIZE, &bytes_read)) {
+				if(MC_SIZE != bytes_read) {
+					status = MC_FILE_READ_ERR;
 				}
-				f_close(&memcard);
 			} else {
-				status = MC_FILE_OPEN_ERR;
+				status = MC_FILE_SIZE_ERR;
 			}
+			f_close(&memcard);
 		} else {
-			status = MC_MOUNT_ERR;
+			status = MC_FILE_OPEN_ERR;
 		}
 	} else {
 		status = MC_NO_INIT;

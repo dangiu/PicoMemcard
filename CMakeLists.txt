@@ -20,6 +20,7 @@ add_subdirectory(no-OS-FatFS-SD-SPI-RPi-Pico/FatFs_SPI PicoMemcard)
 target_sources(PicoMemcard PUBLIC
     ${CMAKE_SOURCE_DIR}/src/led.c
     ${CMAKE_SOURCE_DIR}/src/main.c
+    ${CMAKE_SOURCE_DIR}/src/memcard_manager.c
     ${CMAKE_SOURCE_DIR}/src/memcard_simulator.c
     ${CMAKE_SOURCE_DIR}/src/memory_card.c
     ${CMAKE_SOURCE_DIR}/src/msc_handler.c
