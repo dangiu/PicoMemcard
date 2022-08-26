@@ -104,3 +104,21 @@ void led_output_end_mc_list() {
 	ws2812_put_rgb(0, 0, 0);
 	#endif
 }
+
+void led_output_new_mc() {
+	#ifdef PICO
+	for(int i = 0; i < 10; ++i) {
+		gpio_put(PICO_LED_PIN, false);
+		sleep_ms(50);
+		gpio_put(PICO_LED_PIN, true);
+		sleep_ms(50);
+		gpio_put(PICO_LED_PIN, false);
+		sleep_ms(50);
+	}
+	#endif
+	#ifdef RP2040ZERO
+	ws2812_put_rgb(52, 171, 235);	// light blue
+	sleep_ms(500);
+	ws2812_put_rgb(0, 0, 0);
+	#endif
+}

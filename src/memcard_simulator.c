@@ -35,6 +35,7 @@ uint offsetDatReader;
 memory_card_t mc;
 bool request_next_mc = false;
 bool request_prev_mc = false;
+bool request_new_mc = false;
 mutex_t mutex_sm_tick;
 queue_t mc_sector_sync_queue;
 
@@ -173,6 +174,9 @@ void state_machine_tick(uint8_t data) {
 							break;
 						case START & SELECT & DOWN:
 							request_prev_mc = true;
+							break;
+						case START & SELECT & TRIANGLE:
+							request_new_mc = true;
 							break;
 					}
 					break;
@@ -452,6 +456,25 @@ _Noreturn int simulate_memory_card() {
 						mutex_exit(&mutex_sm_tick);
 					}
 				}
+			}
+		} else if(request_new_mc) {
+			if(is_mc_switch_safe()) {	// check that switch is safe before getting the lock
+				mutex_enter_blocking(&mutex_sm_tick);
+				if(is_mc_switch_safe) {	// and also after
+					uint8_t new_name[MAX_MC_FILENAME_LEN + 1];
+					status = memcard_manager_create(new_name);
+					if(status == MM_OK) {
+						led_output_new_mc();
+						strcpy(mc_file_name, new_name);
+						status = memory_card_import(&mc, mc_file_name);	// switch to newly created mc image
+						if(status != MC_OK)
+							led_blink_error(status);
+					} else
+						led_blink_error(status);
+					simulate_mc_reconnect();
+					request_new_mc = false;
+				}
+				mutex_exit(&mutex_sm_tick);
 			}
 		}
 	}
