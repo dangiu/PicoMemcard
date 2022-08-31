@@ -15,7 +15,8 @@ static uint offsetWs2813;
 
 #ifdef RP2040ZERO
 void ws2812_put_pixel(uint32_t pixel_grb) {
-	pio_sm_put_blocking(pio1, smWs2813, pixel_grb << 8u);
+	sleep_ms(1);	// delay to ensure LED latch will hold data
+	pio_sm_put(pio1, smWs2813, pixel_grb << 8u);
 }
 void ws2812_put_rgb(uint8_t red, uint8_t green, uint8_t blue) {
 	uint32_t mask = (green << 16) | (red << 8) | (blue << 0);
@@ -37,7 +38,7 @@ void led_output_sync_status(bool out_of_sync) {
 	#endif
 	#ifdef RP2040ZERO
 	if(out_of_sync)
-		ws2812_put_rgb(255, 255, 0);
+		ws2812_put_rgb(255, 200, 0);
 	else
 		ws2812_put_rgb(0, 255, 0);
 	#endif
@@ -99,8 +100,8 @@ void led_output_end_mc_list() {
 	}
 	#endif
 	#ifdef RP2040ZERO
-	ws2812_put_rgb(255, 180, 90);	// orange
-	sleep_ms(100);
+	ws2812_put_rgb(255, 96, 0);	// orange
+	sleep_ms(500);
 	ws2812_put_rgb(0, 0, 0);
 	#endif
 }
@@ -118,7 +119,7 @@ void led_output_new_mc() {
 	#endif
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(52, 171, 235);	// light blue
-	sleep_ms(500);
+	sleep_ms(1000);
 	ws2812_put_rgb(0, 0, 0);
 	#endif
 }
