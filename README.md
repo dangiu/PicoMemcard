@@ -19,7 +19,7 @@ PicoMemcard allows you to build your own supercharged PSX Memory Card that can b
 
 Basically anything that will allow you to interface with the memory card slot pins will do. If you have a broken contoller you can cut off the cable and use that since controllers and memory cards share the same bus. Of course, plugging your memory card into the controller slot will prevent you from using 2 controllers at the same time.
 
-[This guy] assembled one using a 3d-printed plastic shell and simple CAT5 network cable. I belive this is the cheapest method anybody has come up until now.
+[This guy] assembled one using a 3d-printed plastic shell and simple CAT5 network cable. I belive this is the cheapest method anybody has come up with until now.
 
 In total building a PicoMemcard wil cost you less than buying a used original Memory Card!
 
@@ -32,27 +32,23 @@ Video of newest release coming soon.
 
 ## PicoMemcard PCB
 
-These are the custom PCBs designed and manufactured specifically for this application. They make it much easier to build PicoMemcard since you don't need to cut up another memory card and all the soldering pads are easily accessible. Still, you will need a soldering iron to assemble the device.
+These are the custom PCBs designed and manufactured specifically for this application. They are not strictly required but make it much easier to build PicoMemcard since you don't need to cut up another memory card and all the soldering pads are easily accessible. All you need to do is to solder the Pico/RP2040-Zero on top of the PCB using a soldering iron.
 
-The Raspberry Pi Pico or RP2040-Zero must sit flush on top of the PCB, so use the soldering pads instead of the through-holes (see right side of the picture). You can use some electrical tape to hold the board in place while you solder the first pins.
+The Raspberry Pi Pico or RP2040-Zero must sit flush on top of the PCB, fortunately both the Pico and RP2040-Zero provide castellated holes that are easy to solder directly to the PCB's pads. You can use some electrical tape to hold the board in place while you solder the first pins.
 
 <img src="./docs/PCBs.jpg" alt="Custom PCBs" width="800">
 
-At the moment there are 3 variations of the PCB, going from left to right: $5)
+At the moment there are 3 variations of the PCB, going from left to right:
 * PCB compatible with Raspberry Pi Pico supporting SD Card.
 * PCB compatible with RP2040-Zero supporting SD Card.
-* Mini PCB compatible with RP2040-Zero not supporting SD Card. This has the same size as the original chip inside Memory Cards so it can be simply dropped in place.
+* Mini PCB compatible with RP2040-Zero not supporting SD Card. This has the same size as the original chip inside Memory Cards so it can be simply dropped in place (you will need to cut a small notch into the shell to let the USB Type C stick out).
 
-If you want to request one you can do it [from here]. I plan to eventually make the PCB design open source as well so people can more easily get access to it.
+If you want to request a PCB you can do it [from here]. I plan to eventually make the PCB design open source as well so people can more easily get access to it. I just need a bit more time to finalize it.
 
-<img src="./docs/PCB-demo.jpg" alt="Custom RP2040-Zero PCB in use" width="800">
-
-In the picture above you can see the full-size RP2040-Zero PCB plugged into a PSOne. I'm finally getting a 3d printer to work on a custom enclosure. In the meantime you can either use some paper sheets as spacers or the top side of a memory card shell to help align the PCB as shown in the picture.
-
-## Wiring
+## PicoMemcard using Memory Card
 Raspberry Pi Pico and RP2040-Zero require different pin usage for full compatibility.
 
-The wiring diagrams below show how to wire respectively a Pico and an RP2040-Zero to a counterfeit memory card. For the other cases (wiring directly to the PSX or using a controller cable) the pins on Pico and RP2040-Zero are the same, the pinout of the PSX/controller can be found on [psx-spx]. The images show the bottom side of the memory card with the cover removed.
+The wiring diagrams below show how to build PicoMemcard by wiring respectively a Pico and an RP2040-Zero to a counterfeit memory card. For the other cases (wiring directly to the PSX or using a controller cable) the pins on Pico and RP2040-Zero are the same, the pinout of the PSX/controller can be found on [psx-spx]. The images show the bottom side of the memory card with the cover removed.
 
 <img src="./docs/wiring-pico.svg" alt="Pico Wiring Diagram" width="800">
 
@@ -63,18 +59,43 @@ The dashed line on the PCB of the memory card is where you should cut a groove d
 Finally the area at the bottom of the memory card is where you can cut a hole to feed the wires through connecting them to the Pico.
 If you are using an RP2040-Zero you can also cut away part of the original Memory Card circuitry to fit it inside the original shell.
 
-The connections in the PicomMemcard+ area are optional and only required if you want to build **PicoMemcard+**.
+The connections in the PicoMemcard+ area are optional and only required if you want to build **PicoMemcard+** (using the optional MicroSD expansion board). Also remember to connect both ground and power to your SD card module (see [MicroSD Module](#microsd-module-for-picomemcard) section for more information).
 
 ## PicoMemcard vs PicoMemcard+
 Since some features cannot be implmented when using only a Pico/RP2040-Zero but require additional hardware, I've decided to split the project in two versions:
 * **PicoMemcard** simplest device to build, only requires a Raspberry Pi Pico / RP2040-Zero
-* **PicoMemcard+** more complex but capable device. Supports additional features such as multiple memory card images but requires additional hardware (namely the microSD SPI expansion board).
+* **PicoMemcard+** more complex and powerful device. Supports additional features such as multiple memory card images but requires additional hardware (namely the MicroSD SPI expansion board).
 
 This approach was choosen because many people want a solution that is as cheap as possible and don't care about additional features. Conversely, others would like to have additional features even if it means spending a bit more money.
 
 The current release of PicoMemcard+ additionally to all the features of PicoMemcard supports:
 * Trasparent write-back: the sync operation performed to save new data no longer reults in the memory card appearing as if was briefly disconnected.
 * Multiple memory card image switchable through controller input.
+
+## MicroSD Module for PicoMemcard+
+There are many variations of MicroSD expansion boards with different pinouts and interfaces. The only requirement for PicoMemcard+ is that the module must provide an SPI interface. SPI interfaces have at least the following pins:
+* Chip Select (CS) (sometime also called Slave Select (SS)).
+* Clock (SCK or CLK).
+* Master Output Slave Input (MISO).
+* Master Input Slave Output (MOSI).
+
+In addition you will need to connect power and ground to your module, some modules are design to work with 5V others with 3.3V (or both), luckily for us both voltages are available on Pico and RP2040-Zero as shown in the schematic in the section [above](#picomemcard-using-memory-card). Some module provides additional pins that can be left disconnected.
+
+Both the original PicoMemcard PCB and the v1.1 Revision were designed with the following module in mind, which was the cheapest one I could find on Aliexpress at the time.
+
+<img src="./docs/pcb-spi.jpg" alt="PCB v1.1 with MicroSD SPI expansion board" width="400">
+
+If you have the same module, or your module has the same pinout you can solder it directly to the other side of the PCB in the outlined area. Otherwise, if your module has a different pinout, you will need to solder manually cables in order to rearrange the connections.
+
+Future version of the PCBs will likely use a different module such as this one:
+
+<img src="./docs/mini-spi.png" alt="Smaller MicroSD SPI expansion board" width="800">
+
+Mainly for two reason:
+* It comes withouth pre-soldered headers which makes it easier to solder onto the PicoMemcard PCB.
+* Its smaller form factor allows for more flexibility.
+
+A good source for modules is Aliexpress, in general you can search for `MicroSD SPI Expansion Board`.
 
 ## Installation
 1. Download the latest [release] for your board (Raspberry Pi Pico and RP2040-Zero require different binaries).
@@ -88,14 +109,16 @@ Memory card images must be exactly 128KB (131072 bytes) in size. PicoMemcard and
 For other file formats, try using [MemcardRex] for converting to the desired output.
 
 * **PicoMemcard** only supports a single image which must be named exactly `MEMCARD.MCR`.
-* **PicoMemcard+** supports hundreds of images. Each image must be named `N.MCR` where `N` is an integer number (e.g. `0.MCR`, `1.MCR`...). On boot the first image loaded will always be `0.MCR`.
+* **PicoMemcard+** supports hundreds of images. Each image must be named `N.MCR` where `N` is an integer number (e.g. `0.MCR`, `1.MCR`...). On boot the first image loaded will always be the one with the lowest number.
 
 Inside `docs/images` you can find two memory card images. One has a couple of saves on it so you can test if everything works correctly, the other is completely empty.
 
-## Switching Image
+## Switching/Creating Images
 On **PicoMemcard+** you can switch the active memory card image with the following inputs:
 * `START + SELECT + DPAD UP` will switch to the next image (e.g from `1.MCR` to `2.MCR`).
 * `START + SELECT + DPAD DOWN` will switch to the previous image (e.g from `1.MCR` to `0.MCR`).
+
+Additionally you can create a new empty memory card image (and automatically switch to it) by pressing  `START + SELECT + TRIANGLE`.
 
 **Attention**: this method only works on PSX if the controller used to provide the input is plugged in the same slot as PicoMemcard (exactly under it). Using a controller from a different slot will have no effect.
 
@@ -110,6 +133,44 @@ Unlike **PicoMemcard+** that tries to write new changes as soon as possible, **P
 
 **Attention**: after you save your game, make sure to wait for the LED to be green before turning off the console otherwise you might lose your more recent progress!
 
+## 3D-Printed Case
+I've finally designed a 3D-printable case for the different PicoMemcard PCBs. It helps inserting correctly the PCB and ensuring that the the connection to the PSX is optimal. The same result, albeit more janky, can be achieved using a folded sheet of paper as a spacer.
+
+<img src="./docs/case-models.png" alt="Model of 3D-printed case" width="800">
+
+<img src="./docs/picomemcard-in-action.jpg" alt="PicoMemcard in Action!" width="800">
+
+The cases are designed following a minimalistic approach, they consist of a single piece which holds tightly the PCB using very small clips without requiring any additional hardware. To assemble it, simply slide in the PCB from the back of the case (opposite to the side connecting to the PSX). Cases for the fullsize PCB are designed to support the MicroSD expansion module.
+
+Here is the download for the STL files:
+* [Design by DanGiu](https://www.thingiverse.com/thing:5488778)
+
+If you don't like this case you can check out other designs many people have already created! I've not tested them personally but here they are:
+* [Design by brik1111](https://www.thingiverse.com/thing:5453156)
+* [Design by bbsan2k](https://www.thingiverse.com/thing:5460187)
+
+## Troubleshooting and LED Indicator
+Generally speaking the onboard LED will provide a pretty good indication regarding the status of PicoMemcard.
+
+In particular, the RP2040-Zero has RGB LED that provides a more clear output. The Pico on the other hand as only a green LED and different blinking patterns indicate different statuses.
+
+### PicoMemcard Status
+| Status | Pico | RP2040-Zero
+| --- | --- | --- |
+| Failed to read memory card image | Slow blinking led  | Red blinking led
+| Data not fully synced (do not turn off PSX)| Led off | Yellow led |
+| Data synced | Led on | Green led |
+
+### PicoMemcard+ Status
+| Status | Pico | RP2040-Zero
+| --- | --- | --- |
+| Failed to read SD card | Blinking led  | Red blinking led
+| Data not fully synced (do not turn off PSX)| Led off | Yellow led |
+| Data synced | Led on | Green led |
+| Memory Card image changed | Three fast blinks | Single blue blink |
+| Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink |
+| New Memory Card image created | Multiple very fast blinks | Single light blue blink |
+
 ## General Warnings
 I would recommend to never plug PicoMemcard both into the PC (via USB) and the PSX at the same time! Otherwise the 5V provided by USB would end up on the 3.3V rail of the PSX. I'm not really sure if this could cause actual damage but I would avoid risking it.
 
@@ -121,7 +182,7 @@ As a disclamer, I don't take any responsability for what will happen to your con
 PicoMemcard has been tested on numerous PSX and PS2 models and **should** work on all of them. For now it only supports PSX memory cards emulation (even on PS2 hardware). PS2 memory card emulation is the next logical step.
 
 ## Design
-For people interested in understanding how PicoMemcard works I provide a more extensive explanation in [this post].
+For people interested in understanding how PicoMemcard works I provide a more extensive explanation in [this post] (although now somewhat outdated).
 
 ## Thanks To
 * [psx-spx] and Martin "NO$PSX" Korth - PlayStation Specifications and documented Memory Card protocol and filesystem.
