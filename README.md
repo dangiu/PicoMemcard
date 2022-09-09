@@ -1,4 +1,7 @@
 # PicoMemcard
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/A0A2EH2DM)
+<a href="https://www.paypal.com/donate/?hosted_button_id=LBDPRHCY726EA" target="_blank"><img src="./docs/githubbutton_pp.svg" height="30px"/></a>
+
 PicoMemcard allows you to build your own supercharged PSX Memory Card that can be connected to your computer via USB in order to transfer saves directly to/from your PSX. You can use it to repurpose broken/counterfeit Memory Cards creating a better one using only a Raspberry Pi Pico.
 
 ## Features
@@ -24,11 +27,7 @@ Basically anything that will allow you to interface with the memory card slot pi
 In total building a PicoMemcard wil cost you less than buying a used original Memory Card!
 
 ## Video
-Video of newest release coming soon.
-
-<!-- TODO add new video -->
-
-[![PicoMemcard](https://img.youtube.com/vi/Sie0kzmnJJw/0.jpg)](https://www.youtube.com/watch?v=Sie0kzmnJJw)
+[![PicoMemcard](https://img.youtube.com/vi/sPZsESXcDcc/0.jpg)](https://youtu.be/sPZsESXcDcc)
 
 ## PicoMemcard PCB
 
