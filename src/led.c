@@ -19,7 +19,11 @@ void ws2812_put_pixel(uint32_t pixel_grb) {
 	pio_sm_put(pio1, smWs2813, pixel_grb << 8u);
 }
 void ws2812_put_rgb(uint8_t red, uint8_t green, uint8_t blue) {
+	#ifdef INVERT_RED_GREEN
+	uint32_t mask = (red << 16) | (green << 8) | (blue << 0);
+	#elif
 	uint32_t mask = (green << 16) | (red << 8) | (blue << 0);
+	#endif
 	ws2812_put_pixel(mask);
 }
 #endif
@@ -37,10 +41,12 @@ void led_output_sync_status(bool out_of_sync) {
 	gpio_put(PICO_LED_PIN, !out_of_sync);
 	#endif
 	#ifdef RP2040ZERO
-	if(out_of_sync)
-		ws2812_put_rgb(255, 200, 0);
-	else
+	if(out_of_sync) {
+		ws2812_put_rgb(255, 0, 0);
+		sleep_ms(25);
+	} else {
 		ws2812_put_rgb(0, 255, 0);
+	}
 	#endif
 }
 
