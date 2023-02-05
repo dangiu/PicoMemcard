@@ -35,14 +35,15 @@ These are the custom PCBs designed and manufactured specifically for this applic
 
 The Raspberry Pi Pico or RP2040-Zero must sit flush on top of the PCB, fortunately both the Pico and RP2040-Zero provide castellated holes that are easy to solder directly to the PCB's pads. You can use some electrical tape to hold the board in place while you solder the first pins.
 
-<img src="./docs/PCBs.jpg" alt="Custom PCBs" width="800">
+<img src="./docs/pcb.png" alt="Custom PCBs" width="800">
 
-At the moment there are 3 variations of the PCB, going from left to right:
-* PCB compatible with Raspberry Pi Pico supporting SD Card.
-* PCB compatible with RP2040-Zero supporting SD Card.
-* Mini PCB compatible with RP2040-Zero not supporting SD Card. This has the same size as the original chip inside Memory Cards so it can be simply dropped in place (you will need to cut a small notch into the shell to let the USB Type C stick out).
+I've created a new version of the original PCBs the major difference are:
+* The general size is smaller
+* A new micro SD card module is supported. This module is smaller, easier to solder and should solve some of the power related issues that were previously present
+* Is fitted for the installation of phisical switches used to switch memory card when PicoMemcard+ is used in systems that do not support switching via controller input (e.g. all PS2 models).
 
-If you want to request a PCB you can do it [from here]. I plan to eventually make the PCB design open source as well so people can more easily get access to it. I just need a bit more time to finalize it.
+The KiCad and Gerber files are available in the repository. If you want to support the project you can request a PCB [from here]. 
+Keep in mind that with the PS2 support release that will eventually happen the PCB may undergo some additional changes before its design is finalized.
 
 ## PicoMemcard using Memory Card
 Raspberry Pi Pico and RP2040-Zero require different pin usage for full compatibility.
@@ -80,21 +81,16 @@ There are many variations of MicroSD expansion boards with different pinouts and
 
 In addition you will need to connect power and ground to your module, some modules are design to work with 5V others with 3.3V (or both), luckily for us both voltages are available on Pico and RP2040-Zero as shown in the schematic in the section [above](#picomemcard-using-memory-card). Some module provides additional pins that can be left disconnected.
 
-Both the original PicoMemcard PCB and the v1.1 Revision were designed with the following module in mind, which was the cheapest one I could find on Aliexpress at the time.
-
-<img src="./docs/pcb-spi.jpg" alt="PCB v1.1 with MicroSD SPI expansion board" width="400">
-
-If you have the same module, or your module has the same pinout you can solder it directly to the other side of the PCB in the outlined area. Otherwise, if your module has a different pinout, you will need to solder manually cables in order to rearrange the connections.
-
-Future version of the PCBs will likely use a different module such as this one:
+The new versions of the PCB are designed to use small modules such as this one:
 
 <img src="./docs/mini-spi.png" alt="Smaller MicroSD SPI expansion board" width="800">
 
-Mainly for two reason:
+This is mainly due to the following reasons:
 * It comes withouth pre-soldered headers which makes it easier to solder onto the PicoMemcard PCB.
 * Its smaller form factor allows for more flexibility.
+* It should have less power issue than prevously used modules.
 
-A good source for modules is Aliexpress, in general you can search for `MicroSD SPI Expansion Board`.
+A good source for these modules is Aliexpress, in general you can search for `MicroSD SPI Expansion Board` and buy the cheapest one you find.
 
 ## Installation
 1. Download the latest [release] for your board (Raspberry Pi Pico and RP2040-Zero require different binaries).
@@ -177,8 +173,12 @@ If you really need to have the Pico plugged into both the USB and PSX (e.g. for 
 
 As a disclamer, I don't take any responsability for what will happen to your console when using PicoMemcard/PicoMemcard+.
 
-## Future Development
-PicoMemcard has been tested on numerous PSX and PS2 models and **should** work on all of them. For now it only supports PSX memory cards emulation (even on PS2 hardware). PS2 memory card emulation is the next logical step.
+## Project Updates
+### 5 February 2023
+Sorry everybody but I've been quite inactive on the project lately. Due to a change of job IRL I have less time to work for the moment.
+Anyway, behind the scenes I've been trying to add support for PS2 memory card but I'm afraid that will require the addition of an extra hardware component unless I am able to develop an efficient cacheing mechanisms or something similar. Anyway I'll keep working on it when I have free time. I have in mind many improvement for the project and I think the future of it is going to be exciting.
+
+Special thanks to everybody that supported it so far! You are all amazing.
 
 ## Design
 For people interested in understanding how PicoMemcard works I provide a more extensive explanation in [this post] (although now somewhat outdated).
