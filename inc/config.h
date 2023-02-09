@@ -13,6 +13,9 @@
 #define PICO
 //#define RP2040ZERO
 
+/* Invert red and green. Uncomment this if the LED colours for your RP2040 Zero are incorrect. */
+#define INVERT_RED_GREEN
+
 /* PSX Interface Pinout */
 #ifdef PICO
 	#define PIN_DAT 5

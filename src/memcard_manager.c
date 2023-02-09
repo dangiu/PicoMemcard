@@ -5,17 +5,23 @@
 #include "sd_config.h"
 #include "memory_card.h"
 
+/* extension for memcard files */
+static const char memcard_file_ext[] = ".MCR";
+
+/* filename to store previously loaded memcard index */
+static const char memcard_lastmemcardindex_filename[] = "LastMemcardIndex.dat";
+
 bool is_name_valid(uint8_t* filename) {
 	if(!filename)
 		return false;
 	filename = strupr(filename);	// convert to upper case
 	/* check .MCR extension */
 	uint8_t* ext = strrchr(filename, '.');
-	if(!ext || strcmp(ext, ".MCR"))
+	if(!ext || strcmp(ext, memcard_file_ext))
 		return false;
 	/* check that filename (excluding extension) is only digits */
 	uint32_t digit_char_count = strspn(filename, "0123456789");
-	if(digit_char_count != strlen(filename) - strlen(".MCR"))
+	if(digit_char_count != strlen(filename) - strlen(memcard_file_ext))
 		return false;
 	return true;
 }
@@ -33,6 +39,30 @@ bool is_image_valid(uint8_t* filename) {
 	if(f_info.fsize != MC_SIZE)	// check that memory card image has correct size
 		return false;
 	return true;
+}
+
+uint32_t update_prev_loaded_memcard_index(uint32_t index) {
+	/* update the previously loaded memcard index stored on the SD card */
+	uint32_t retVal = MM_OK;
+	FIL data_file;
+	uint32_t buff_size = 100;
+	FRESULT res = f_open(&data_file, memcard_lastmemcardindex_filename, FA_CREATE_ALWAYS | FA_WRITE);
+	if (res == FR_OK) {
+		/* int to string */
+		char str_index[buff_size];
+		int index_len = sprintf(str_index, "%d", index);
+
+		/* overwrite the contents with new index */
+		UINT bytes_written;
+		f_write(&data_file, str_index, index_len, &bytes_written);
+		if (bytes_written < index_len) {
+			/* error writing to file. disk full? */
+			retVal = MM_FILE_WRITE_ERR;
+		}
+		f_close(&data_file);
+	}
+
+	return retVal;
 }
 
 bool memcard_manager_exist(uint8_t* filename) {
@@ -96,6 +126,23 @@ uint32_t memcard_manager_get(uint32_t index, uint8_t* out_filename) {
 	return MM_OK;
 }
 
+uint32_t memcard_manager_get_prev_loaded_memcard_index() {
+	/* read which memcard to load from last session from SD card */
+	uint32_t index = 0;
+	FIL data_file;
+	uint32_t buff_size = 100;
+	FRESULT res = f_open(&data_file, memcard_lastmemcardindex_filename, FA_OPEN_EXISTING | FA_READ);
+	if (res == FR_OK) {
+		char line[buff_size];
+		if (f_gets(line, sizeof(line), &data_file)) {
+			/* string to int (base 10) */
+			index = (uint32_t)strtol(line, (char**)NULL, 10);
+		}
+		f_close(&data_file);
+	}
+	return index;
+}
+
 uint32_t memcard_manager_get_next(uint8_t* filename, uint8_t* out_nextfile) {
 	if(!filename || !out_nextfile)
 		return MM_BAD_PARAM;
@@ -130,6 +177,8 @@ uint32_t memcard_manager_get_next(uint8_t* filename, uint8_t* out_nextfile) {
 		if(!strcmp(filename, &image_names[i])) {
 			int32_t next_i = i + (MAX_MC_FILENAME_LEN + 1);
 			if(next_i < buff_size) {
+				int32_t new_index = next_i / ((MAX_MC_FILENAME_LEN + 1));
+				update_prev_loaded_memcard_index(new_index);
 				strcpy(out_nextfile, &image_names[next_i]);
 				found = true;
 				break;
@@ -178,6 +227,8 @@ uint32_t memcard_manager_get_prev(uint8_t* filename, uint8_t* out_prevfile) {
 		if(!strcmp(filename, &image_names[i])) {
 			int32_t prev_i = i - (MAX_MC_FILENAME_LEN + 1);
 			if(prev_i >= 0) {
+				int32_t new_index = prev_i / (MAX_MC_FILENAME_LEN + 1);
+				update_prev_loaded_memcard_index(new_index);
 				strcpy(out_prevfile, &image_names[prev_i]);
 				found = true;
 				break;
@@ -199,7 +250,8 @@ uint32_t memcard_manager_create(uint8_t* out_filename) {
 	uint32_t count = memcard_manager_count();
 	uint32_t status = memcard_manager_get(count - 1, name);	// get name of last (alphabetically) memory card image
 	uint32_t memcard_n = atoi(name);	// convert to integer
-	snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d.MCR", ++memcard_n);	// generate new name by incrementing by 1
+	++memcard_n; // increment index for new mem card
+	snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d%s", memcard_n, memcard_file_ext);	// generate new filename
 	if(memcard_manager_exist(name))	// check that generated name does not exist
 		return MM_NAME_CONFLICT;
 	strcpy(out_filename, name);
@@ -304,5 +356,6 @@ uint32_t memcard_manager_create(uint8_t* out_filename) {
 	} else {
 		return MM_FILE_OPEN_ERR;
 	}
+	update_prev_loaded_memcard_index(memcard_n);
 	return MM_OK;
 }

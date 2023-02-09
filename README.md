@@ -109,7 +109,7 @@ Memory card images must be exactly 128KB (131072 bytes) in size. PicoMemcard and
 For other file formats, try using [MemcardRex] for converting to the desired output.
 
 * **PicoMemcard** only supports a single image which must be named exactly `MEMCARD.MCR`.
-* **PicoMemcard+** supports hundreds of images. Each image must be named `N.MCR` where `N` is an integer number (e.g. `0.MCR`, `1.MCR`...). On boot the first image loaded will always be the one with the lowest number.
+* **PicoMemcard+** supports hundreds of images. Each image must be named `N.MCR` where `N` is an integer number (e.g. `0.MCR`, `1.MCR`...). On boot your previously loaded image will be reloaded, unless it's a fresh card then `0.MCR` will be loaded.
 
 Inside `docs/images` you can find two memory card images. One has a couple of saves on it so you can test if everything works correctly, the other is completely empty.
 
@@ -127,11 +127,11 @@ Additionally this method does not work on PS2 Memory Cards and Controllers are w
 ## Syncing Changes
 Generally speaking, new data written to PicoMemcard (e.g. when you save) is permanently stored only after a short period of time (due to hardware limitation). The on board LED indicates whether all changes have been stored or not, in particular:
 * On Rapsbery Pi Pico the LED will be on when all changes have been saved, off otherwise.
-* On RP2040-Zero the LED will be green when all changes have been saved, yellow otherwise
+* On RP2040-Zero the LED will be solid green when all changes have been saved, red otherwise.
 
 Unlike **PicoMemcard+** that tries to write new changes as soon as possible, **PicoMemcard** will generally do it only after a period of inactivity (around 5 seconds). If you want to force **PicoMemcard** to immediately sync you can press `START + SELECT + TRIANGLE`.
 
-**Attention**: after you save your game, make sure to wait for the LED to be green before turning off the console otherwise you might lose your more recent progress!
+**Attention**: after you save your game, make sure to wait for the LED to be solid green before turning off the console otherwise you might lose your more recent progress!
 
 ## 3D-Printed Case
 I've finally designed a 3D-printable case for the different PicoMemcard PCBs. It helps inserting correctly the PCB and ensuring that the the connection to the PSX is optimal. The same result, albeit more janky, can be achieved using a folded sheet of paper as a spacer.
@@ -158,15 +158,15 @@ In particular, the RP2040-Zero has RGB LED that provides a more clear output. Th
 | Status | Pico | RP2040-Zero
 | --- | --- | --- |
 | Failed to read memory card image | Slow blinking led  | Red blinking led
-| Data not fully synced (do not turn off PSX)| Led off | Yellow led |
-| Data synced | Led on | Green led |
+| Data not fully synced (do not turn off PSX)| Led off | Red led (or flashing red and green) |
+| Data synced | Led on | Green solid led |
 
 ### PicoMemcard+ Status
 | Status | Pico | RP2040-Zero
 | --- | --- | --- |
 | Failed to read SD card | Blinking led  | Red blinking led
-| Data not fully synced (do not turn off PSX)| Led off | Yellow led |
-| Data synced | Led on | Green led |
+| Data not fully synced (do not turn off PSX)| Led off | Red led (or flashing red and green) |
+| Data synced | Led on | Green solid led |
 | Memory Card image changed | Three fast blinks | Single blue blink |
 | Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink |
 | New Memory Card image created | Multiple very fast blinks | Single light blue blink |

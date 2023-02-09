@@ -370,11 +370,14 @@ _Noreturn int simulate_memory_card() {
 			sleep_ms(2000);
 		}
 	}
-	status = memcard_manager_get_first(mc_file_name);	// get first memory card
+	status = memcard_manager_get_initial(mc_file_name);	// get initial memory card to load
 	if(status != MM_OK) {
-		while(true) {
-			led_blink_error(status);
-			sleep_ms(1000);
+		status = memcard_manager_get(0, mc_file_name);	// revert to first mem card if failing to load previously loaded card
+		if(status != MM_OK) {
+			while(true) {
+				led_blink_error(status);
+				sleep_ms(1000);
+			}
 		}
 	}
 	status = memory_card_import(&mc, mc_file_name);
