@@ -104,11 +104,11 @@ Additionally this method does not work on PS2 Memory Cards and Controllers are w
 ## Syncing Changes
 Generally speaking, new data written to PicoMemcard (e.g. when you save) is permanently stored only after a short period of time (due to hardware limitation). The on board LED indicates whether all changes have been stored or not, in particular:
 * On Rapsbery Pi Pico the LED will be on when all changes have been saved, off otherwise.
-* On RP2040-Zero the LED will be green when all changes have been saved, yellow otherwise
+* On RP2040-Zero the LED will be solid green when all changes have been saved, red otherwise.
 
 Unlike **PicoMemcard+** that tries to write new changes as soon as possible, **PicoMemcard** will generally do it only after a period of inactivity (around 5 seconds). If you want to force **PicoMemcard** to immediately sync you can press `START + SELECT + TRIANGLE`.
 
-**Attention**: after you save your game, make sure to wait for the LED to be green before turning off the console otherwise you might lose your more recent progress!
+**Attention**: after you save your game, make sure to wait for the LED to be solid green before turning off the console otherwise you might lose your more recent progress!
 
 ## General Warnings
 I would recommend to never plug PicoMemcard both into the PC (via USB) and the PSX at the same time! Otherwise the 5V provided by USB would end up on the 3.3V rail of the PSX. I'm not really sure if this could cause actual damage but I would avoid risking it.
