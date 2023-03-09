@@ -6,10 +6,6 @@
 #include "ws2812.pio.h"
 #endif
 
-#ifdef PICO
-#define PICO_LED_PIN 25
-#endif
-
 static uint smWs2813;
 static uint offsetWs2813;
 
@@ -38,7 +34,7 @@ void led_init() {
 
 void led_output_sync_status(bool out_of_sync) {
 	#ifdef PICO
-	gpio_put(PICO_LED_PIN, !out_of_sync);
+	gpio_put(PICO_DEFAULT_LED_PIN, !out_of_sync);
 	#endif
 	#ifdef RP2040ZERO
 	if(out_of_sync) {
@@ -53,7 +49,7 @@ void led_output_sync_status(bool out_of_sync) {
 void led_blink_error(int amount) {
 	/* ensure led is off */
 	#ifdef PICO
-	gpio_put(PICO_LED_PIN, false);
+	gpio_put(PICO_DEFAULT_LED_PIN, false);
 	#endif
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(0, 0, 0);
@@ -62,14 +58,14 @@ void led_blink_error(int amount) {
 	/* start blinking */
 	for(int i = 0; i < amount; ++i) {
 		#ifdef PICO
-		gpio_put(PICO_LED_PIN, true);
+		gpio_put(PICO_DEFAULT_LED_PIN, true);
 		#endif
 		#ifdef RP2040ZERO
 		ws2812_put_rgb(255, 0, 0);
 		#endif
 		sleep_ms(500);
 		#ifdef PICO
-		gpio_put(PICO_LED_PIN, false);
+		gpio_put(PICO_DEFAULT_LED_PIN, false);
 		#endif
 		#ifdef RP2040ZERO
 		ws2812_put_rgb(0, 0, 0);
@@ -80,11 +76,11 @@ void led_blink_error(int amount) {
 
 void led_output_mc_change() {
 	#ifdef PICO
-	gpio_put(PICO_LED_PIN, false);
+	gpio_put(PICO_DEFAULT_LED_PIN, false);
 	sleep_ms(100);
-	gpio_put(PICO_LED_PIN, true);
+	gpio_put(PICO_DEFAULT_LED_PIN, true);
 	sleep_ms(100);
-	gpio_put(PICO_LED_PIN, false);
+	gpio_put(PICO_DEFAULT_LED_PIN, false);
 	sleep_ms(100);
 	#endif
 	#ifdef RP2040ZERO
@@ -97,11 +93,11 @@ void led_output_mc_change() {
 void led_output_end_mc_list() {
 	#ifdef PICO
 	for(int i = 0; i < 3; ++i) {
-		gpio_put(PICO_LED_PIN, false);
+		gpio_put(PICO_DEFAULT_LED_PIN, false);
 		sleep_ms(100);
-		gpio_put(PICO_LED_PIN, true);
+		gpio_put(PICO_DEFAULT_LED_PIN, true);
 		sleep_ms(100);
-		gpio_put(PICO_LED_PIN, false);
+		gpio_put(PICO_DEFAULT_LED_PIN, false);
 		sleep_ms(100);
 	}
 	#endif
@@ -115,11 +111,11 @@ void led_output_end_mc_list() {
 void led_output_new_mc() {
 	#ifdef PICO
 	for(int i = 0; i < 10; ++i) {
-		gpio_put(PICO_LED_PIN, false);
+		gpio_put(PICO_DEFAULT_LED_PIN, false);
 		sleep_ms(50);
-		gpio_put(PICO_LED_PIN, true);
+		gpio_put(PICO_DEFAULT_LED_PIN, true);
 		sleep_ms(50);
-		gpio_put(PICO_LED_PIN, false);
+		gpio_put(PICO_DEFAULT_LED_PIN, false);
 		sleep_ms(50);
 	}
 	#endif
