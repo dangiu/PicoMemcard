@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
+set(PICO_BOARD pico_w)
+
 include(pico_sdk_import.cmake)
 
 project(picomemcard_project C CXX ASM)
@@ -35,6 +37,18 @@ target_include_directories(PicoMemcard PUBLIC
 
 pico_enable_stdio_uart(PicoMemcard 1)	# enable only UART stdio
 
-target_link_libraries(PicoMemcard pico_stdlib pico_multicore pico_time hardware_pio tinyusb_device tinyusb_board FatFs_SPI)
+target_link_libraries(
+  PicoMemcard
+  pico_stdlib
+  pico_multicore
+  pico_time
+  hardware_pio
+  tinyusb_device
+  tinyusb_board
+  FatFs_SPI
+
+  pico_cyw43_arch_none # If you do not need the TCP/IP stack but wish to use the on-board LED on a Pico W
+  hardware_adc
+)
 
 pico_add_extra_outputs(PicoMemcard)
