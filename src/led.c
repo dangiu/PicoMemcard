@@ -12,7 +12,6 @@
 
 #ifdef PICO
 #define PICO_LED_PIN 25
-#define CYW43_WL_GPIO_LED_PIN 0
 #endif
 
 static uint smWs2813;
