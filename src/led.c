@@ -163,9 +163,9 @@ int32_t is_pico_w() {
     else {
       gpio_init(VSYS_CTL_GPIO);              // GPIO
       gpio_set_dir(VSYS_CTL_GPIO, GPIO_OUT); // output
-      set_led(VSYS_CTL_GPIO, 0);            // low
+      gpio_put(VSYS_CTL_GPIO, 0);            // low
       if (adc_read() < ONE_VOLT) {
-          set_led(VSYS_CTL_GPIO, 1);        // high
+          gpio_put(VSYS_CTL_GPIO, 1);        // high
           picoW = 1;                         // Pico W
       } else {
           picoW = 0;                         // Pico
