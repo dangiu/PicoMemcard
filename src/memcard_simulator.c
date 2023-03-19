@@ -19,6 +19,14 @@
 #define MEMCARD_WRITE 0x57
 #define MEMCARD_ID 0x53
 
+#define MEMCARD_PING 0x20
+#define MEMCARD_GAMEID 0x21
+#define MEMCARD_PREV_CHAN 0x22
+#define MEMCARD_NEXT_CHAN 0x23
+#define MEMCARD_PREV_CARD 0x24
+#define MEMCARD_NEXT_CARD 0x25
+#define MEMCARD_NAME 0x26
+
 #define PAD_TOP 0x01
 #define PAD_READ 0x42
 
@@ -51,6 +59,8 @@ enum states {
 	MC_END,
 	PAD_ACCESS,
 	PAD_SNIFF,
+  MC_PRO_PING,
+  MC_PRO_GAMEID
 };
 
 uint8_t current_state = MC_IDLE;
@@ -62,6 +72,10 @@ uint8_t sm_byte_counter = 0;
 sector_t sm_address = 0x0000;
 uint16_t sw_status = 0x0000;	// pad switch status
 uint8_t id_data[] = {MC_ACK1, MC_ACK2, 0x04, 0x00, 0x00, 0x80};
+
+uint8_t byte_counter = 2;
+uint8_t game_id_len = 0;
+uint8_t game_id[255];
 
 void restart_pio_sm() {
 	pio_set_sm_mask_enabled(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter, false);
@@ -199,6 +213,14 @@ void state_machine_tick(uint8_t data) {
 					valid_command = true;
 					command_state = MC_EXECUTE_ID;
 					break;
+        case MEMCARD_PING:
+          valid_command = false;
+          next_state = MC_PRO_PING;
+          break;
+        case MEMCARD_GAMEID:
+          valid_command = false;
+          next_state = MC_PRO_GAMEID;
+          break;
 				default:
 					valid_command = false;
 					next_state = MC_IDLE;
@@ -330,6 +352,45 @@ void state_machine_tick(uint8_t data) {
 			}
 			next_state = MC_IDLE;
 			break;
+    case MC_PRO_PING:
+      if (byte_counter & 2) { // 2 or 3 (RESERVED)
+        write_byte_blocking(pio0, smDatWriter, 0x00);
+      }
+      if (byte_counter == 4) {
+        write_byte_blocking(pio0, smDatWriter, 0x27); // Card present
+      }
+      if (byte_counter == 5) {
+        cancel_ack();
+        printf("MC Received Ping from PS\n");
+        byte_counter = 2;
+        next_state = MC_IDLE;
+        break;
+      }
+      byte_counter++;
+      break;
+    case MC_PRO_GAMEID:
+      if (byte_counter == 2) { // First byte (RESERVED)
+        write_byte_blocking(pio0, smDatWriter, 0x00);
+      }
+      else if (byte_counter == 3) { // Length
+        game_id_len = data; // Note: if data is 255, this could overflow our string by one byte with the null char. TODO: Add sanity check (eg. length is 0)
+        write_byte_blocking(pio0, smDatWriter, 0x00);
+      }
+      else if ((byte_counter - 3) < game_id_len) { // ...bytes...
+        game_id[byte_counter - 4] = data;
+        write_byte_blocking(pio0, smDatWriter, data);
+      }
+      else { // Last byte
+        cancel_ack();
+        game_id[byte_counter - 4] = data;
+        game_id[byte_counter - 3] = 0; // GAMEID string should be null terminated already, but we shouldn't trust it.
+        printf("Game ID: %s\n", game_id);
+        byte_counter = 2;
+        next_state = MC_IDLE;
+        break;
+      }
+      byte_counter++;
+      break;
 		default:
 			next_state = MC_IDLE;
 			write_byte_blocking(pio0, smDatWriter, 0xff);
