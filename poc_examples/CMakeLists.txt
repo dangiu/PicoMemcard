@@ -1,1 +1,2 @@
+add_subdirectory(controller_simulator)
 add_subdirectory(memcard_sniffer)
