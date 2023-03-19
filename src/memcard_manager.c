@@ -250,10 +250,10 @@ uint32_t memcard_manager_create(uint8_t* out_filename) {
   uint8_t name[MAX_MC_FILENAME_LEN + 1];
   FIL memcard_image;
 
-  uint8_t i = 0;
+  uint8_t memcard_n = 0;
   FRESULT f_res;
   do {
-    snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d.MCR", i++); // Set name to %d.MCR
+    snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d.MCR", memcard_n++); // Set name to %d.MCR
     f_res = f_open(&memcard_image, name, FA_CREATE_NEW | FA_WRITE); // Open new file for writing
   } while (f_res == FR_EXIST); // Repeat if file exists.
 
@@ -357,6 +357,6 @@ uint32_t memcard_manager_create(uint8_t* out_filename) {
 	} else {
 		return MM_FILE_OPEN_ERR;
 	}
-	update_prev_loaded_memcard_index(memcard_n);
+	update_prev_loaded_memcard_index(memcard_n - 1);
 	return MM_OK;
 }
