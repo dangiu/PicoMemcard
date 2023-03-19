@@ -246,18 +246,19 @@ uint32_t memcard_manager_get_prev(uint8_t* filename, uint8_t* out_prevfile) {
 uint32_t memcard_manager_create(uint8_t* out_filename) {
 	if(!out_filename)
 		return MM_BAD_PARAM;
-	uint8_t name[MAX_MC_FILENAME_LEN + 1];
-	uint32_t count = memcard_manager_count();
-	uint32_t status = memcard_manager_get(count - 1, name);	// get name of last (alphabetically) memory card image
-	uint32_t memcard_n = atoi(name);	// convert to integer
-	++memcard_n; // increment index for new mem card
-	snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d%s", memcard_n, memcard_file_ext);	// generate new filename
-	if(memcard_manager_exist(name))	// check that generated name does not exist
-		return MM_NAME_CONFLICT;
-	strcpy(out_filename, name);
-	/* generate image file */
-	FIL memcard_image;
-	FRESULT f_res = f_open(&memcard_image, name, FA_CREATE_NEW | FA_WRITE);
+
+  uint8_t name[MAX_MC_FILENAME_LEN + 1];
+  FIL memcard_image;
+
+  uint8_t i = 0;
+  FRESULT f_res;
+  do {
+    snprintf(name, MAX_MC_FILENAME_LEN + 1, "%d.MCR", i++); // Set name to %d.MCR
+    f_res = f_open(&memcard_image, name, FA_CREATE_NEW | FA_WRITE); // Open new file for writing
+  } while (f_res == FR_EXIST); // Repeat if file exists.
+
+  strcpy(out_filename, name); // We have a valid name, copy it to out_filename
+
 	if(f_res == FR_OK) {
 		UINT bytes_written = 0;
 		uint8_t buffer[MC_SEC_SIZE];
