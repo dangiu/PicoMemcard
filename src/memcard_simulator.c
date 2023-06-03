@@ -60,9 +60,10 @@ void simulate_mc_reconnect() {
 	pio_sm_clear_fifos(pio0, smCmdReader);
 	pio_sm_clear_fifos(pio0, smDatReader);
 	pio_sm_drain_tx_fifo(pio0, smDatWriter); // drain instead of clear, so that we empty the OSR
-	printf("Simulating reconnection...\n");
+	printf("Simulating reconnection...");
 	led_output_mc_change();
 	sleep_ms(MC_RECONNECT_TIME);
+    printf("  done\n");
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
@@ -239,13 +240,12 @@ void process_cmd(uint8_t cmd) {
 }
 
 _Noreturn void simulation_thread() {
-	printf("Simulation core begin...\n");
 	while(true) {
         process_cmd(RECV_CMD());
 	}
 }
 
-void __time_critical_func(restart_pio_sm()) {
+void __time_critical_func(restart_pio_sm)(void) {
     pio_set_sm_mask_enabled(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter, false);
     pio_restart_sm_mask(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
     pio_sm_exec(pio0, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
@@ -262,11 +262,11 @@ void __time_critical_func(restart_pio_sm()) {
 }
 
 void init_pio() {
-    gpio_set_dir(PIN_DAT, 0);
-    gpio_set_dir(PIN_CMD, 0);
-    gpio_set_dir(PIN_SEL, 0);
-    gpio_set_dir(PIN_CLK, 0);
-    gpio_set_dir(PIN_ACK, 0);
+    gpio_set_dir(PIN_DAT, false);
+    gpio_set_dir(PIN_CMD, false);
+    gpio_set_dir(PIN_SEL, false);
+    gpio_set_dir(PIN_CLK, false);
+    gpio_set_dir(PIN_ACK, false);
     gpio_disable_pulls(PIN_DAT);
     gpio_disable_pulls(PIN_CMD);
     gpio_disable_pulls(PIN_SEL);
@@ -357,7 +357,9 @@ _Noreturn int simulate_memory_card() {
     /* SMs are automatically enabled on first SEL reset */
 
 	/* Launch memory card thread */
+    printf("Starting simulation core...");
 	multicore_launch_core1(simulation_thread);
+    printf("  done\n");
 
     /* Process sync/switch/creation requests */
 	while(true) {

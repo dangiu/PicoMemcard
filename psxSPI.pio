@@ -39,7 +39,7 @@ in pins 1		    ; sample 1 bit form DAT line
 .wrap
 
 .program dat_writer
-.side_set 1
+.side_set 1 pindirs
 ; Set pins mapping:
 ;	0 - DAT
 ; Output pins mapping:
@@ -50,20 +50,24 @@ in pins 1		    ; sample 1 bit form DAT line
 ;	Asserts ACK (signaling that the memory card must send something)
 ;	and outputs bits to the DAT line on falling clock edges.
 ;	waits for SEL low signal before starting execution.
-set pins, 1				side 1	; release DAT line (set high output)
-wait 0 gpio PIN_SEL		side 1	; wait for SEL to go low
+;	Bits are outputted by changing pin direction:
+;	0 -> set pin as input (Hi-Z) -> output a one
+;	1 -> set pin as output low -> output a zero
+set pindirs, 0			side 0	; release DAT line (set pin as input = Hi-Z)
+wait 0 gpio PIN_SEL		side 0	; wait for SEL to go low
 .wrap_target
-pull					side 1	; manual pull in order to stall SM if TX fifo is empty
-nop						side 0 [15]		; begin ACK
-set x, 7				side 0 [15]		; continue ACK and set bit counter
+pull					side 0	; manual pull in order to stall SM if TX fifo is empty
+nop						side 1 [5]		; start ACK
+set x, 7				side 0 [5]		; stop ACK delay and set bit counter
 sendbit:
-wait 1 gpio PIN_CLK		side 1			; stop ACK and check clock is high (sideset completes even if instruction stalls)
-wait 0 gpio PIN_CLK		side 1			; wait for falling clock edge
-out pins 1				side 1			; output 1 bit
-jmp x-- sendbit			side 1			; count and send 8 bits
+wait 1 gpio PIN_CLK		side 0			; stop ACK and check clock is high (sideset completes even if instruction stalls)
+wait 0 gpio PIN_CLK		side 0			; wait for falling clock edge
+out pindirs 1			side 0			; output 1 bit
+jmp x-- sendbit			side 0			; count and send 8 bits
 .wrap
 
 % c-sdk {
+#define SLOW_CLKDIV 50	// 125MHz divided down to 2.5 MHz - we need this so we don't count clocks not meant for us on systems like the PS2
 
 static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset) {
 	pio_sm_config c = cmd_reader_program_get_default_config(offset);
@@ -78,6 +82,9 @@ static inline void cmd_reader_program_init(PIO pio, uint sm, uint offset) {
 	/* Fifo Configuration */
 	sm_config_set_in_shift(&c, true, true, 8);		// shift ISR to right, autopush every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);	// join RX FIFO
+
+	/* Clock configuration */
+    sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
@@ -97,6 +104,9 @@ static inline void dat_reader_program_init(PIO pio, uint sm, uint offset) {
 	sm_config_set_in_shift(&c, true, true, 8);		// shift ISR to right, autopush every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);	// join RX FIFO
 
+    /* Clock configuration */
+    sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
+
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
 }
@@ -109,13 +119,15 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset) {
 	sm_config_set_set_pins(&c, PIN_DAT, 1);		// set base SET pin (DAT)
 	sm_config_set_sideset_pins(&c, PIN_ACK);	// set base SIDESET pin (ACK)
 
-	pio_sm_set_pins_with_mask(pio, sm, 1 << PIN_DAT, 1 << PIN_DAT);	// set DAT pin as initial high
-	pio_sm_set_consecutive_pindirs(pio, sm, PIN_DAT, 1, true);		// set DAT pin as output
-	pio_gpio_init(pio, PIN_DAT);									// setup GPIO to mux PIO output on DAT pin
+    /* configure DAT pin for open drain (output low but set as input initially) */
+	pio_sm_set_pins_with_mask(pio, sm, 0, 1 << PIN_DAT);
+	pio_sm_set_consecutive_pindirs(pio, sm, PIN_DAT, 1, false);
+	pio_gpio_init(pio, PIN_DAT);
 
-	pio_sm_set_pins_with_mask(pio, sm, 1 << PIN_ACK, 1 << PIN_ACK);	// set ACK pin as initial high
-	pio_sm_set_consecutive_pindirs(pio, sm, PIN_ACK, 1, true);		// set ACK pin as output
-	pio_gpio_init(pio, PIN_ACK);									// setup GPIO to mux PIO output on ACK pin
+    /* configure ACK pin for open drain (output low but set as input initially) */
+	pio_sm_set_pins_with_mask(pio, sm, 0, 1 << PIN_ACK);
+	pio_sm_set_consecutive_pindirs(pio, sm, PIN_ACK, 1, false);
+	pio_gpio_init(pio, PIN_ACK);
 
 	pio_sm_set_consecutive_pindirs(pio, sm, PIN_SEL, 1, false);
 	pio_sm_set_consecutive_pindirs(pio, sm, PIN_CLK, 1, false);
@@ -123,6 +135,9 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset) {
 	/* FIFO Configuration */
 	sm_config_set_out_shift(&c, true, true, 8);		// shift OSR to right, autopull every 8 bits
 	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);	// join TX FIFO
+
+    /* Clock configuration */
+    sm_config_set_clkdiv_int_frac(&c, SLOW_CLKDIV, 0x00);
 
 	/* Initialize SM */
 	pio_sm_init(pio, sm, offset, &c);
@@ -133,6 +148,6 @@ static inline uint8_t read_byte_blocking(PIO pio, uint sm) {
 }
 
 static inline void write_byte_blocking(PIO pio, uint sm, uint32_t byte) {
-	pio_sm_put_blocking(pio, sm, byte);
+	pio_sm_put_blocking(pio, sm, ~byte & 0xFF); // invert bits (0 become 1 setting the output to low)
 }
 %}
