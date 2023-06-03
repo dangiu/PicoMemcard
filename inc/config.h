@@ -13,16 +13,19 @@
 #define PICO
 //#define RP2040ZERO
 
+/* Invert red and green. Uncomment this if the LED colours for your RP2040 Zero are incorrect. */
+#define INVERT_RED_GREEN
+
 /* PSX Interface Pinout */
-#ifdef PICO
-	#define PIN_DAT 5
-	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
-	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
-	#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
-	#define PIN_ACK 9
+#ifdef PICO                 // TODO remove/find way to include this into pio code
+	//#define PIN_DAT 5
+	//#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
+	//#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
+	//#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
+	//#define PIN_ACK 9
 #endif
 
-#ifdef RP2040ZERO
+#ifdef RP2040ZERO           // TODO remove/find way to include this into pio code
 	#define PIN_DAT 9
 	#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
 	#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD

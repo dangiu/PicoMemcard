@@ -68,7 +68,7 @@ int main() {
 	smDatReader = pio_claim_unused_sm(pio, true);
 
 	dat_reader_program_init(pio, smDatReader, offsetDatReader, PIN_DAT);
-	cmd_reader_program_init(pio, smCmdReader, offsetCmdReader, PIN_CMD);
+	cmd_reader_program_init(pio, smCmdReader, offsetCmdReader, PIN_CMD, PIN_ACK);
 	sel_monitor_program_init(pio, smSelMonitor, offsetSelMonitor, PIN_SEL);
 
 	/* Enable all SM simultaneously */
@@ -77,8 +77,8 @@ int main() {
 
 	/* Samping phase */
 	for(int i = 0; i < BUFF_LEN; ++i) {
-		cmdBuffer[index] = read_byte_blocking(pio, smCmdReader);
-		datBuffer[index] = read_byte_blocking(pio, smDatReader);
+		cmdBuffer[i] = read_byte_blocking(pio, smCmdReader);
+		datBuffer[i] = read_byte_blocking(pio, smDatReader);
 	}
 
 	/* Printing results */
