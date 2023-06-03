@@ -139,7 +139,7 @@ void led_output_new_mc() {
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(52, 171, 235);	// light blue
 	sleep_ms(1000);
-	led_disable();
+    ws2812_put_rgb(0, 0, 0);
 	#endif
 }
 
@@ -182,6 +182,7 @@ void init_led(uint32_t pin) {
   }
 }
 
+#ifdef PICO
 void set_led(uint32_t pin, uint32_t level) {
   if ((pin == 25) && is_pico_w()) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, level);
@@ -189,3 +190,4 @@ void set_led(uint32_t pin, uint32_t level) {
     gpio_put(pin, level);
   }
 }
+#endif
