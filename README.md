@@ -162,14 +162,14 @@ In particular, the RP2040-Zero has RGB LED that provides a more clear output. Th
 | Data synced | Led on | Green led |
 
 ### PicoMemcard+ Status
-| Status | Pico | RP2040-Zero
-| --- | --- | --- |
-| Failed to read SD card | Blinking led  | Red blinking led
-| Data not fully synced (do not turn off PSX)| Led off | Yellow led |
-| Data synced | Led on | Green led |
-| Memory Card image changed | Three fast blinks | Single blue blink |
-| Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink |
-| New Memory Card image created | Multiple very fast blinks | Single light blue blink |
+| Status | Pico | RP2040-Zero | Pico RGB
+| --- | --- | --- | --- |
+| Failed to read SD card | Blinking led  | Red blinking led | Red blinking led |
+| Data not fully synced (do not turn off PSX)| Led off | Yellow led | Yellow led |
+| Data synced | Led on | Green led | Green led |
+| Memory Card image changed | Three fast blinks | Single blue blink | Single blue blink |
+| Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink | Single purple blink |
+| New Memory Card image created | Multiple very fast blinks | Single light blue blink | Single light blue blink |
 
 ## General Warnings
 I would recommend to never plug PicoMemcard both into the PC (via USB) and the PSX at the same time! Otherwise the 5V provided by USB would end up on the 3.3V rail of the PSX. I'm not really sure if this could cause actual damage but I would avoid risking it.
