@@ -60,7 +60,7 @@ wait 0 gpio PIN_SEL		side 0	        ; wait for SEL to go low
 .wrap_target
 pull					side 0	        ; manual pull in order to stall SM if TX fifo is empty
 nop						side 1 [5]		; start ACK
-set x, 7				side 0 [5]		; stop ACK delay and set bit counter    // TODO why is this delay here? test without it!
+set x, 7				side 0  		; stop ACK delay and set bit counter    // TODO why is this delay here? test without it!
 sendbit:
 wait 1 gpio PIN_CLK		side 0			; check clock is high (sideset completes even if instruction stalls)
 wait 0 gpio PIN_CLK		side 0			; wait for falling clock edge
