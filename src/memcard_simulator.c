@@ -30,12 +30,15 @@
 #define PAD_TOP 0x01
 #define PAD_READ 0x42
 
-uint smSelMonitor;
+#define SEND(byte) write_byte_blocking(pio0, smDatWriter, byte)
+#define ACK() SEND(0xff)    // ACK without sending anything by keeping the DAT line always high
+#define RECV_CMD() read_byte_blocking(pio0, smCmdReader)
+#define RECV_DAT() read_byte_blocking(pio0, smDatReader)
+
 uint smCmdReader;
 uint smDatReader;
 uint smDatWriter;
 
-uint offsetSelMonitor;
 uint offsetCmdReader;
 uint offsetDatWriter;
 uint offsetDatReader;
@@ -104,7 +107,7 @@ void restart_pio_sm() {
  * @brief Simulates memory card being briefly unplugged and replugged
  */
 void simulate_mc_reconnect() {
-	pio_sm_set_enabled(pio0, smSelMonitor, false);
+    irq_set_enabled(IO_IRQ_BANK0, false);
 	pio_restart_sm_mask(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
 	pio_sm_exec(pio0, smCmdReader, pio_encode_jmp(offsetCmdReader));	// restart smCmdReader PC
 	pio_sm_exec(pio0, smDatReader, pio_encode_jmp(offsetDatReader));	// restart smDatReader PC
@@ -115,22 +118,8 @@ void simulate_mc_reconnect() {
 	printf("Simulating reconnection...\n");
 	led_output_mc_change();
 	sleep_ms(MC_RECONNECT_TIME);
-	pio_sm_set_enabled(pio0, smSelMonitor, true);
-}
-
-/**
- * @brief Interrupt handler called when SEL goes high
- * Notifies main thread to reset SMs and sim thread
- */
-void pio0_irq0() {
-	// NOTE: This will not block core 1
-	// Reset the state machines and sim thread, transaction has ended
-	restart_pio_sm();
-	pio_interrupt_clear(pio0, 0);
-}
-
-void cancel_ack() {
-	pio_sm_exec(pio0, smCmdReader, pio_encode_jmp(offsetCmdReader));		// restart smCmdReader
+    printf("  done\n");
+    irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
 void state_machine_tick(uint8_t data) {
@@ -149,19 +138,16 @@ void state_machine_tick(uint8_t data) {
 			switch(data) {
 				case MEMCARD_TOP:
 					// Send flag byte and start transaction
-					write_byte_blocking(pio0, smDatWriter, mc.flag_byte);
+					SEND(mc.flag_byte);
 					next_state = MC_COMMAND;
 					break;
 				case PAD_TOP:
 					next_state = PAD_ACCESS;
-					// fall through and cancel ack
 				default:
-					cancel_ack();
+                    break;
 			}
 			break;
-		case PAD_ACCESS:	/* during PAD interactiona always cancel ACKs to avoid interfering */
-			cancel_ack();
-			
+		case PAD_ACCESS:
 			switch(data) {
 				case PAD_READ:
 					next_state = PAD_SNIFF;
@@ -172,16 +158,15 @@ void state_machine_tick(uint8_t data) {
 			
 			break;
 		case PAD_SNIFF:
-			cancel_ack();
 			switch (sm_byte_counter) {
 				case 0:
 					pio_sm_clear_fifos(pio0, smDatReader);	// clear out Hi-Z, idlo, and idhi bytes
 					break;
 				case 1: 
-					sw_status = read_byte_blocking(pio0, smDatReader);
+					sw_status = RECV_DAT();
 					break;
 				case 2:
-					sw_status = sw_status | (read_byte_blocking(pio0, smDatReader) << 8);
+					sw_status = sw_status | (RECV_DAT() << 8);
 					switch(sw_status) {
 						case START & SELECT & UP:
 							request_next_mc = true;
@@ -228,7 +213,7 @@ void state_machine_tick(uint8_t data) {
 			if (valid_command) {
 				valid_command = false;
 				next_state = MC_SEND_ID;
-				write_byte_blocking(pio0, smDatWriter, MC_ID1);
+                SEND(MC_ID1);
 			}
 			break;
 		case MC_SEND_ID:
@@ -238,27 +223,27 @@ void state_machine_tick(uint8_t data) {
 			} else {
 				next_state = MC_RECV_ADDR;
 			}
-			write_byte_blocking(pio0, smDatWriter, MC_ID2);
+            SEND(MC_ID2);
 			break;
 		case MC_RECV_ADDR: // receive the address
 			if (sm_byte_counter == 0) {
 				// Filler
-				write_byte_blocking(pio0, smDatWriter, 0x00);
+                SEND(0x00);
 				sm_byte_counter++;
 			} else if (sm_byte_counter == 1) {
 				// MSB
 				sm_address = data << 8;
 				// Send MSB
-				write_byte_blocking(pio0, smDatWriter, data);
+                SEND(data);
 				sm_byte_counter++;
 			} else if (sm_byte_counter == 2) {
 				// LSB
 				sm_address |= data;
 				if(command_state == MC_EXECUTE_READ) {
-					write_byte_blocking(pio0, smDatWriter, MC_ACK1);
+                    SEND(MC_ACK1);
 				} else {
 					// Otherwise send LSB
-					write_byte_blocking(pio0, smDatWriter, data);
+                    SEND(data);
 				}
 
 				next_state = command_state;
@@ -268,7 +253,7 @@ void state_machine_tick(uint8_t data) {
 			break;
 		case MC_EXECUTE_ID: // send mc id - used to identify which type of device this is
 			if(sm_byte_counter < sizeof(id_data)) {
-				write_byte_blocking(pio0, smDatWriter, id_data[sm_byte_counter++]);
+                SEND(id_data[sm_byte_counter++]);
 			} else {
 				next_state = MC_IDLE;
 			}
@@ -276,20 +261,20 @@ void state_machine_tick(uint8_t data) {
 		case MC_EXECUTE_READ: // do a read operation
 			if(sm_byte_counter == 0) {
 				// Send ACK2
-				write_byte_blocking(pio0, smDatWriter, MC_ACK2);
+                SEND(MC_ACK2);
 				checksum = ((sm_address & 0xFF00) >> 8) ^ (sm_address & 0x00FF);
 			} else if (sm_byte_counter > 0 && sm_byte_counter < 3) {
 				if(memory_card_is_sector_valid(&mc, sm_address)) {
 					if (sm_byte_counter == 1) {
 						// MSB
-						write_byte_blocking(pio0, smDatWriter, (sm_address & 0xFF00) >> 8);
+                        SEND((sm_address & 0xFF00) >> 8);
 					} else {
 						// LSB
-						write_byte_blocking(pio0, smDatWriter, (sm_address & 0x00FF));
+                        SEND((sm_address & 0x00FF));
 					}
 				} else {
 					// Abort transaction - invalid sector
-					write_byte_blocking(pio0, smDatWriter, 0xff);
+                    SEND(0xff);
 					next_state = MC_ABORT;
 				}
 			} else {
@@ -297,11 +282,11 @@ void state_machine_tick(uint8_t data) {
 				// byte counter is 3 at start here
 				uint8_t* sec_ptr = memory_card_get_sector_ptr(&mc, sm_address);
 				if ((sm_byte_counter - 3) < MC_SEC_SIZE) {
-					write_byte_blocking(pio0, smDatWriter, sec_ptr[sm_byte_counter - 3]);
+                    SEND(sec_ptr[sm_byte_counter - 3]);
 					checksum ^= sec_ptr[sm_byte_counter - 3];
 				} else {
 					// Send checksum
-					write_byte_blocking(pio0, smDatWriter, checksum);
+                    SEND(checksum);
 					checksum = 0x00;
 					next_state = MC_END;
 				}
@@ -317,15 +302,15 @@ void state_machine_tick(uint8_t data) {
 				if(sm_byte_counter < MC_SEC_SIZE) {
 					checksum ^= data;
 					sec_ptr[sm_byte_counter] = data;
-					write_byte_blocking(pio0, smDatWriter, data);
+                    SEND(data);
 				} else {
 					if (sm_byte_counter == MC_SEC_SIZE) {
 						// Read checksum
 						recv_checksum = data;
-						write_byte_blocking(pio0, smDatWriter, MC_ACK1);
+                        SEND(MC_ACK1);
 					} else {
 						// ACK 2
-						write_byte_blocking(pio0, smDatWriter, MC_ACK2);
+                        SEND(MC_ACK2);
 						memory_card_reset_seen_flag(&mc);
 						if(sm_address != MC_TEST_SEC) {
 							queue_add_blocking(&mc_sector_sync_queue, &sm_address);
@@ -334,33 +319,32 @@ void state_machine_tick(uint8_t data) {
 					}
 				}
 			} else {
-				write_byte_blocking(pio0, smDatWriter, 0xff);
+                SEND(0xff);
 				next_state = MC_ABORT;
 			}
 			sm_byte_counter++;
 			break;
 		case MC_ABORT: // something went wrong, abort
-			write_byte_blocking(pio0, smDatWriter, 0xff);
+            SEND(0xff);
 			next_state = MC_IDLE;
 			break;
 		case MC_END: // end
 			// Send end byte and update timestamp
 			if(recv_checksum == checksum) {
-				write_byte_blocking(pio0, smDatWriter, MC_GOOD);
+                SEND(MC_GOOD);
 			} else {
-				write_byte_blocking(pio0, smDatWriter, MC_BAD_CHK);
+                SEND(MC_BAD_CHK);
 			}
 			next_state = MC_IDLE;
 			break;
     case MC_PRO_PING:
       if (byte_counter & 2) { // 2 or 3 (RESERVED)
-        write_byte_blocking(pio0, smDatWriter, 0x00);
+          SEND(0x00);
       }
       if (byte_counter == 4) {
-        write_byte_blocking(pio0, smDatWriter, 0x27); // Card present
+          SEND(0x27); // Card present
       }
       if (byte_counter == 5) {
-        cancel_ack();
         printf("MC Received Ping from PS\n");
         byte_counter = 2;
         next_state = MC_IDLE;
@@ -370,18 +354,17 @@ void state_machine_tick(uint8_t data) {
       break;
     case MC_PRO_GAMEID:
       if (byte_counter == 2) { // First byte (RESERVED)
-        write_byte_blocking(pio0, smDatWriter, 0x00);
+          SEND(0x00);
       }
       else if (byte_counter == 3) { // Length
         game_id_len = data; // Note: if data is 255, this could overflow our string by one byte with the null char. TODO: Add sanity check (eg. length is 0)
-        write_byte_blocking(pio0, smDatWriter, 0x00);
+          SEND(0x00);
       }
       else if ((byte_counter - 3) < game_id_len) { // ...bytes...
         game_id[byte_counter - 4] = data;
-        write_byte_blocking(pio0, smDatWriter, data);
+          SEND(data);
       }
       else { // Last byte
-        cancel_ack();
         game_id[byte_counter - 4] = data;
         game_id[byte_counter - 3] = 0; // GAMEID string should be null terminated already, but we shouldn't trust it.
         printf("Game ID: %s\n", game_id);
@@ -393,15 +376,14 @@ void state_machine_tick(uint8_t data) {
       break;
 		default:
 			next_state = MC_IDLE;
-			write_byte_blocking(pio0, smDatWriter, 0xff);
+            SEND(0xff);
 	}
 }
 
 _Noreturn void simulation_thread() {
-	printf("Simulation core begin...\n");
 	while(true) {
 		mutex_enter_blocking(&mutex_sm_tick);
-		uint8_t item = read_byte_blocking(pio0, smCmdReader);
+		uint8_t item = RECV_CMD();
 		state_machine_tick(item);
 		mutex_exit(&mutex_sm_tick);
 	}
@@ -409,6 +391,39 @@ _Noreturn void simulation_thread() {
 
 bool is_mc_switch_safe() {
 	return (current_state != MC_EXECUTE_WRITE && next_state != MC_EXECUTE_WRITE && queue_is_empty(&mc_sector_sync_queue));
+}
+
+void init_pio() {
+    gpio_set_dir(PIN_DAT, false);
+    gpio_set_dir(PIN_CMD, false);
+    gpio_set_dir(PIN_SEL, false);
+    gpio_set_dir(PIN_CLK, false);
+    gpio_set_dir(PIN_ACK, false);
+    gpio_disable_pulls(PIN_DAT);
+    gpio_disable_pulls(PIN_CMD);
+    gpio_disable_pulls(PIN_SEL);
+    gpio_disable_pulls(PIN_CLK);
+    gpio_disable_pulls(PIN_ACK);
+
+    offsetCmdReader = pio_add_program(pio0, &cmd_reader_program);
+    smCmdReader = pio_claim_unused_sm(pio0, true);
+    offsetDatReader = pio_add_program(pio0, &dat_reader_program);
+    smDatReader = pio_claim_unused_sm(pio0, true);
+    offsetDatWriter = pio_add_program(pio0, &dat_writer_program);
+    smDatWriter = pio_claim_unused_sm(pio0, true);
+
+    cmd_reader_program_init(pio0, smCmdReader, offsetCmdReader);
+    dat_reader_program_init(pio0, smDatReader, offsetDatReader);
+    dat_writer_program_init(pio0, smDatWriter, offsetDatWriter);
+}
+
+void __time_critical_func(sel_isr_callback()) {
+    // TODO refractor comment, also is __time_critical_func needed for speed? we should test if everything works without it!
+    /* begin inlined call of:  gpio_acknowledge_irq(PIN_SEL, GPIO_IRQ_EDGE_RISE); kept in RAM for performance reasons */
+    check_gpio_param(PIN_SEL);
+    iobank0_hw->intr[PIN_SEL / 8] = GPIO_IRQ_EDGE_RISE << (4 * (PIN_SEL % 8));
+    /* end of inlined call */
+    restart_pio_sm();
 }
 
 _Noreturn int simulate_memory_card() {
@@ -449,34 +464,27 @@ _Noreturn int simulate_memory_card() {
 		}
 	}
 
-	printf("\n\nInitializing memory card simulation...\n");
-
-	/* Setup PIO interrupts */
-	irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0); // installed on the current core (0)
-	irq_set_enabled(PIO0_IRQ_0, true);
-
-	offsetSelMonitor = pio_add_program(pio0, &sel_monitor_program);
-	offsetCmdReader = pio_add_program(pio0, &cmd_reader_program);
-	offsetDatReader = pio_add_program(pio0, &dat_reader_program);
-	offsetDatWriter = pio_add_program(pio0, &dat_writer_program);
-
-	smSelMonitor = pio_claim_unused_sm(pio0, true);
-	smCmdReader = pio_claim_unused_sm(pio0, true);
-	smDatReader = pio_claim_unused_sm(pio0, true);
-	smDatWriter = pio_claim_unused_sm(pio0, true);
-
-	dat_writer_program_init(pio0, smDatWriter, offsetDatWriter, PIN_DAT, PIN_SEL);
-	cmd_reader_program_init(pio0, smCmdReader, offsetCmdReader, PIN_CMD, PIN_ACK);
-	dat_reader_program_init(pio0, smDatReader, offsetDatReader, PIN_DAT);
-	sel_monitor_program_init(pio0, smSelMonitor, offsetSelMonitor, PIN_SEL);
+    printf("Initializing PIO...");
+    init_pio();
+    printf("  done\n");
 
 
-	/* Enable all SM simultaneously */
-	uint32_t smMask = (1 << smSelMonitor) | (1 << smCmdReader) | (1 << smDatReader) | (1 << smDatWriter);
-	pio_enable_sm_mask_in_sync(pio0, smMask);
+    /* Setup SEL interrupt on GPIO */
+    // gpio_set_irq_enabled_with_callback(PIN_SEL, GPIO_IRQ_EDGE_RISE, true, my_gpio_callback);  // decomposed into:
+    gpio_set_irq_enabled(PIN_SEL, GPIO_IRQ_EDGE_RISE, true);
+    irq_set_exclusive_handler(IO_IRQ_BANK0, sel_isr_callback); // instead of normal gpio_set_irq_callback() which has slower handling
+    irq_set_enabled(IO_IRQ_BANK0, true);
+
+    /* Setup additional GPIO configuration options */
+    gpio_set_slew_rate(PIN_DAT, GPIO_SLEW_RATE_FAST);
+    gpio_set_drive_strength(PIN_DAT, GPIO_DRIVE_STRENGTH_12MA);
+
+    /* SMs are automatically enabled on first SEL reset */
 
 	/* Launch memory card thread */
+    printf("Starting simulation core...");
 	multicore_launch_core1(simulation_thread);
+    printf("  done\n");
 
 	while(true) {
 		if(!queue_is_empty(&mc_sector_sync_queue)) {
@@ -495,7 +503,6 @@ _Noreturn int simulate_memory_card() {
 				request_next_mc = false;
 				request_prev_mc = false;
 			} else {
-				uint32_t status;
 				uint8_t new_file_name[MAX_MC_FILENAME_LEN + 1];
 				if(request_next_mc)
 					status = memcard_manager_get_next(mc_file_name, new_file_name);

@@ -23,8 +23,9 @@ void cdc_task(void);
 int main(void) {
 	stdio_init_all();
 	led_init();
-	
+
 	/* Pico connected to PC, initialize USB transfer mode */
+    /*
 	board_init();
 	tusb_init();
 
@@ -35,6 +36,7 @@ int main(void) {
 		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status)
 			break;
 	}
+     */
 	
 	/* Pico powered by PSX, initialize memory card simulation */
 	simulate_memory_card();	
