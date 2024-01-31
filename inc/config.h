@@ -18,11 +18,11 @@
 
 /* PSX Interface Pinout */
 #ifdef PICO                 // TODO remove/find way to include this into pio code
-	//#define PIN_DAT 5
+	//#define PIN_DAT 1
 	//#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
 	//#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
 	//#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
-	//#define PIN_ACK 9
+	//#define PIN_ACK 5
 #endif
 
 #ifdef RP2040ZERO           // TODO remove/find way to include this into pio code
