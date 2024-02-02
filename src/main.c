@@ -13,6 +13,9 @@
 #include "led.h"
 /* Global Configuration */
 #include "config.h"
+/* LCD Files */
+#include "DEV_Config.h"
+#include "LCD_0in96.h
 
 
 bool tud_mount_status = false;
@@ -32,6 +35,8 @@ int main(void) {
 		tud_task(); // tinyusb device task
 		cdc_task();
 
+		LCD_0IN96_Clear(Green);
+		
 		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status)
 			break;
 	}
@@ -39,6 +44,8 @@ int main(void) {
 	/* Pico powered by PSX, initialize memory card simulation */
 	simulate_memory_card();	
 
+	LCD_0IN96_Clear(Blue);
+	
 	return 0;
 }
 
