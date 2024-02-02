@@ -15,7 +15,7 @@
 #include "config.h"
 /* LCD Files */
 #include "DEV_Config.h"
-#include "LCD_0in96.h
+#include "LCD_0in96.h"
 
 
 bool tud_mount_status = false;
