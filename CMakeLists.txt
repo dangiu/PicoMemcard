@@ -29,6 +29,8 @@ target_sources(PicoMemcard PUBLIC
     ${CMAKE_SOURCE_DIR}/src/msc_handler.c
     ${CMAKE_SOURCE_DIR}/src/sd_config.c
     ${CMAKE_SOURCE_DIR}/src/usb_descriptors.c
+    ${CMAKE_SOURCE_DIR}/src/DEV_Config.c
+    ${CMAKE_SOURCE_DIR}/src/LCD_0in96.c
 )
 
 # Example include
