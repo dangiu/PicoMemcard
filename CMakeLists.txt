@@ -17,7 +17,7 @@ pico_generate_pio_header(PicoMemcard ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
 add_definitions(-DNO_PICO_LED)  # prevent SD SPI library from using LED
 add_subdirectory(no-OS-FatFS-SD-SPI-RPi-Pico/FatFs_SPI PicoMemcard)
-add_subdirectory(poc_examples)
+# add_subdirectory(poc_examples)
 
 # Example source
 target_sources(PicoMemcard PUBLIC
