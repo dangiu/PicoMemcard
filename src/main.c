@@ -13,6 +13,8 @@
 #include "led.h"
 /* Global Configuration */
 #include "config.h"
+/* LCD Control*/
+LCD_0in96.h
 
 
 bool tud_mount_status = false;
@@ -27,6 +29,8 @@ int main(void) {
 	/* Pico connected to PC, initialize USB transfer mode */
 	board_init();
 	tusb_init();
+	/* Change LCD to Blue when device is mounted on PC*/
+	LCD_0IN96_Clear(Blue);
 
 	while(true) {
 		tud_task(); // tinyusb device task
@@ -53,6 +57,8 @@ void tud_mount_cb(void) {
 	sd_card_t *p_sd = sd_get_by_num(0);
 	if (!p_sd) return;
 	sd_init_card(p_sd);
+	/* Change LCD Color to Green When Mounted on PSX*/
+	LCD_0IN96_Clear(Green);
 }
 
 // Invoked when device is unmounted
