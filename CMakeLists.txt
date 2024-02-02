@@ -39,7 +39,7 @@ target_include_directories(PicoMemcard PUBLIC
 )
 
 pico_enable_stdio_uart(PicoMemcard 1)	# enable only UART stdio
-pico_enable_stdio_i2c(PicoMemcard 1)
+pico_enable_stdio_i2c(PicoMemcard 1)    # enable i2c for LCD?
 
 target_link_libraries(
   PicoMemcard
