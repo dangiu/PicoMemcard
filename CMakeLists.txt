@@ -46,6 +46,8 @@ target_link_libraries(
   pico_multicore
   pico_time
   hardware_pio
+  hardware_i2c
+  hardware_pwm
   tinyusb_device
   tinyusb_board
   FatFs_SPI
