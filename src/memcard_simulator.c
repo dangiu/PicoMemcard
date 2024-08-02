@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "memcard_simulator.h"
 #include "stdio.h"
 #include "pico/multicore.h"
@@ -47,9 +48,13 @@ memory_card_t mc;
 bool request_next_mc = false;
 bool request_prev_mc = false;
 bool request_new_mc = false;
+bool skip = false;
+bool indexfile = false;
 mutex_t write_transaction;
 queue_t mc_sector_sync_queue;
 const uint8_t id_data[] = {0x04, 0x00, 0x00, 0x80};
+uint8_t game_id_len = 0;
+uint8_t game_id[24];
 
 void simulate_mc_reconnect() {
     irq_set_enabled(IO_IRQ_BANK0, false);
@@ -180,25 +185,54 @@ void process_memcard_cmd() {
                 RECV_CMD();
                 SEND(0x27); // card present
                 RECV_CMD();
+                SEND(0xFF); // send ack
                 printf("MC Received Ping from PS\n");
             }
             break;
+        case MEMCARD_PREV_CARD:
+            {
+                SEND(0x00); // byte 1 reserved
+                RECV_CMD();
+                SEND(0x00); // byte 2 reserved
+                RECV_CMD();
+                SEND(0x20); // SUCC
+                RECV_CMD();
+                SEND(0xFF); // TERMINATION
+                request_prev_mc = true;
+            }
+            break;
+        case MEMCARD_NEXT_CARD:
+            {
+                SEND(0x00); // byte 1 reserved
+                RECV_CMD();
+                SEND(0x00); // byte 2 reserved
+                RECV_CMD();
+                SEND(0x20); // SUCCESS
+                RECV_CMD();
+                SEND(0xFF); // TERMINATION
+                request_next_mc = true;
+
+            }
+            break;
+        #ifdef GAMEID
         case MEMCARD_GAMEID:
             {
                 SEND(0x00);
-                uint8_t game_id_len = RECV_CMD();
+                RECV_CMD(); //reserved
+                SEND(0x00); //reserved
+                game_id_len = RECV_CMD();
                 data = 0x00;
-                uint8_t game_id[256] = {0};
                 /* read game id */
-                for(uint32_t i = 0; i < game_id_len; i++) {
+                for(int i = 0; i < game_id_len; ++i){
                     SEND(data); // ack previous data
                     data = RECV_CMD();
                     game_id[i] = data;
                 }
                 SEND(data); // ack last byte
-                printf("Game ID: %s\n", game_id);
+                indexfile = true;
             }
             break;
+        #endif
         default:
             break;
     }
@@ -215,7 +249,15 @@ void process_pad_cmd() {    /* during pad interaction never call SEND() only int
         case START & SELECT & UP:
             request_next_mc = true;
             break;
+        case START & SELECT & RIGHT:
+            skip = true;
+            request_next_mc = true;
+            break;
         case START & SELECT & DOWN:
+            request_prev_mc = true;
+            break;
+        case START & SELECT & LEFT:
+            skip = true;
             request_prev_mc = true;
             break;
         case START & SELECT & TRIANGLE:
@@ -314,9 +356,11 @@ _Noreturn int simulate_memory_card() {
 		while(true)
 			led_blink_error(1);
 	}
+    printf("sd card mounted\n");
 
     uint32_t status = memory_card_init(&mc);
 	if(status != MC_OK) {
+        printf("could not init memcard\n");
 		while(true) {
 			led_blink_error(status);
 			sleep_ms(2000);
@@ -326,14 +370,17 @@ _Noreturn int simulate_memory_card() {
 	if(status != MM_OK) {
 		status = memcard_manager_get(0, mc_file_name);	// revert to first mem card if failing to load previously loaded card
 		if(status != MM_OK) {
+            printf("could not load memcard\n");
 			while(true) {
 				led_blink_error(status);
 				sleep_ms(1000);
 			}
 		}
 	}
+    printf("mcfilename: %s\n", mc_file_name);
 	status = memory_card_import(&mc, mc_file_name);
 	if(status != MC_OK) {
+        printf("could not import memcard\n");
 		while(true) {
 			led_blink_error(status);
 			sleep_ms(2000);
@@ -356,6 +403,8 @@ _Noreturn int simulate_memory_card() {
 
     /* SMs are automatically enabled on first SEL reset */
 
+    memset(game_id, 0, 24);
+
 	/* Launch memory card thread */
     printf("Starting simulation core...");
 	multicore_launch_core1(simulation_thread);
@@ -375,11 +424,12 @@ _Noreturn int simulate_memory_card() {
 				request_next_mc = false;
 				request_prev_mc = false;
 			} else {
+                uint8_t test = 0x10;
 				uint8_t new_file_name[MAX_MC_FILENAME_LEN + 1];
 				if(request_next_mc)
-					status = memcard_manager_get_next(mc_file_name, new_file_name);
+					status = memcard_manager_get_next(mc_file_name, new_file_name, skip);
 				else if (request_prev_mc)
-					status = memcard_manager_get_prev(mc_file_name, new_file_name);
+					status = memcard_manager_get_prev(mc_file_name, new_file_name, skip);
 				if(status != MM_OK) {
 					led_output_end_mc_list();
 					request_next_mc = false;
@@ -394,11 +444,14 @@ _Noreturn int simulate_memory_card() {
                     /* switch mc */
                     strcpy(mc_file_name, new_file_name);
                     status = memory_card_import(&mc, mc_file_name);
+                    update_prev_loaded_memcard_index(atoi(mc_file_name));
+                    printf("mc is: %s\n", mc_file_name);
                     if(status != MC_OK)
                         led_blink_error(status);
                     simulate_mc_reconnect();
                     request_next_mc = false;
                     request_prev_mc = false;
+                    skip = false;
                     mutex_exit(&write_transaction);
 				}
 			}
@@ -423,6 +476,33 @@ _Noreturn int simulate_memory_card() {
                 simulate_mc_reconnect();
                 request_new_mc = false;
                 mutex_exit(&write_transaction);
-		}
+		} else if(indexfile){
+            mutex_enter_blocking(&write_transaction);
+            printf("%s\n", game_id);
+            /* ensure latest write operations have been synced */
+            led_output_sync_status(true);
+            while(!queue_is_empty(&mc_sector_sync_queue))
+                queue_sync_step(&mc_sector_sync_queue, mc_file_name);
+            led_output_sync_status(false);
+            uint8_t new_name[MAX_MC_FILENAME_LEN + 1];
+            status = create_index(game_id, game_id_len, new_name); //we do game id stuff here
+            if(status == MM_OK) {
+                led_output_new_mc();
+                strcpy(mc_file_name, new_name);
+                status = memory_card_import(&mc, mc_file_name);	// switch to newly/already created mc image
+                if(status != MC_OK){
+                    led_blink_error(status);
+                }
+                printf("\n THE NEW MC MOUNTED IS: %s\n", mc_file_name);
+            }else if(status == 1){
+                //he did nothing
+                printf("\ndid nothing\n");
+            }else
+                led_blink_error(status);
+            simulate_mc_reconnect();
+            memset(game_id, '\0', 24);
+            indexfile = false;
+            mutex_exit(&write_transaction);
+        }
 	}
 }

@@ -8,9 +8,6 @@
 /* extension for memcard files */
 static const char memcard_file_ext[] = ".MCR";
 
-/* filename to store previously loaded memcard index */
-static const char memcard_lastmemcardindex_filename[] = "LastMemcardIndex.dat";
-
 bool is_name_valid(uint8_t* filename) {
 	if(!filename)
 		return false;
@@ -46,22 +43,29 @@ uint32_t update_prev_loaded_memcard_index(uint32_t index) {
 	uint32_t retVal = MM_OK;
 	FIL data_file;
 	uint32_t buff_size = 100;
-	FRESULT res = f_open(&data_file, memcard_lastmemcardindex_filename, FA_CREATE_ALWAYS | FA_WRITE);
+	char line[buff_size];
+	char buff[128];
+	char finalname[MAX_MC_FILENAME_LEN + 13];
+	memset(finalname, '\0', MAX_MC_FILENAME_LEN + 13);
+	memset(buff, '\0', 128);
+	FRESULT res = f_open(&data_file, "index.txt", FA_OPEN_ALWAYS | FA_READ | FA_WRITE);
 	if (res == FR_OK) {
-		/* int to string */
-		char str_index[buff_size];
-		int index_len = sprintf(str_index, "%d", index);
-
-		/* overwrite the contents with new index */
-		UINT bytes_written;
-		f_write(&data_file, str_index, index_len, &bytes_written);
-		if (bytes_written < index_len) {
-			/* error writing to file. disk full? */
-			retVal = MM_FILE_WRITE_ERR;
+		f_gets(line, sizeof(line), &data_file);
+		printf("line be like: %s\n", line);
+		if(strncmp(line, "LASTMEMCARD:", 11) != 0){
+			printf("LASTMEMCARD NOT PRESENT IN INDEX FILE\n");
+			retVal = MM_FILE_OPEN_ERR;
+		}else{
+			f_rewind(&data_file);
+			strcat(finalname, "LASTMEMCARD:");
+			sprintf(buff,"%03d",index);
+			strcat(finalname, buff);
+			strcat(finalname, ".MCR\n");
+			printf("%s\n", finalname);
+			f_puts(finalname, &data_file);
 		}
-		f_close(&data_file);
 	}
-
+	f_close(&data_file);
 	return retVal;
 }
 
@@ -95,152 +99,124 @@ uint32_t memcard_manager_get(uint32_t index, uint8_t* out_filename) {
 		return MM_BAD_PARAM;
 	if(index < 0 || index > MAX_MC_IMAGES)
 		return MM_INDEX_OUT_OF_BOUNDS;
-	uint32_t count = memcard_manager_count();
-	if(index >= count)
-		return MM_INDEX_OUT_OF_BOUNDS;
-	uint8_t* image_names = malloc(((MAX_MC_FILENAME_LEN + 1) * count));	// allocate space for image names
-	if(!image_names)
-		return MM_ALLOC_FAIL; // malloc failed
 	/* retrive images names */
 	FRESULT res;
-	DIR root;
 	FILINFO f_info;
-	res = f_opendir(&root, "");	// open root directory
-	uint32_t i = 0;
-	if(res == FR_OK) {
-		while(true) {
-			res = f_readdir(&root, &f_info);
-			if(res != FR_OK || f_info.fname[0] == 0) break;
-			if(!(f_info.fattrib & AM_DIR)) {	// not a directory
-				if(is_image_valid(f_info.fname)) {
-					strcpy(&image_names[(MAX_MC_FILENAME_LEN + 1) * i], f_info.fname);
-					++i;
-				}
-			}
-		}
+	char finalname[MAX_MC_FILENAME_LEN + 1];
+	memset(finalname, '\0', MAX_MC_FILENAME_LEN + 1);
+	sprintf(finalname,"%d",index);
+	strcat(finalname, ".MCR");
+	res = f_stat(finalname, &f_info);
+	if(res == FR_NO_FILE){
+		printf("THE MCR DOES NOT EXISTS\n");
+		return MM_FILE_OPEN_ERR;
 	}
-	/* sort names alphabetically */
-	qsort(image_names, count, (MAX_MC_FILENAME_LEN + 1), (__compar_fn_t) strcmp);
-	strcpy(out_filename, &image_names[(MAX_MC_FILENAME_LEN + 1) * index]);
-	free(image_names);	// free allocated memory
+	strcpy(out_filename, finalname);
+	printf("got: %s\n", out_filename);
 	return MM_OK;
 }
 
 uint32_t memcard_manager_get_prev_loaded_memcard_index() {
 	/* read which memcard to load from last session from SD card */
 	uint32_t index = 0;
+	char finalname[MAX_MC_FILENAME_LEN + 1];
+	memset(finalname, '\0', MAX_MC_FILENAME_LEN + 1);
 	FIL data_file;
 	uint32_t buff_size = 100;
-	FRESULT res = f_open(&data_file, memcard_lastmemcardindex_filename, FA_OPEN_EXISTING | FA_READ);
+	FRESULT res = f_open(&data_file, "index.txt", FA_OPEN_ALWAYS | FA_READ | FA_WRITE);
+	char line[buff_size];
 	if (res == FR_OK) {
-		char line[buff_size];
-		if (f_gets(line, sizeof(line), &data_file)) {
-			/* string to int (base 10) */
-			index = (uint32_t)strtol(line, (char**)NULL, 10);
+		f_gets(line, sizeof(line), &data_file);
+		if(strncmp(line, "LASTMEMCARD:", 11) != 0){
+			char lastmem[MAX_MC_FILENAME_LEN + 13];
+			memset(lastmem, '\0', MAX_MC_FILENAME_LEN + 13);
+			strcat(lastmem, "LASTMEMCARD:\n");
+			printf("LASTMEMCARD NOT PRESENT IN INDEX FILE, WRITING...\n");
+			f_puts(lastmem, &data_file);
+		}else{
+			int j = 0;
+			for(int i = 12; i < MAX_MC_FILENAME_LEN + 1; i++){
+				if(line[i] == '\n'){
+					break;
+				}else{
+					finalname[j] = line[i];
+					j++;
+				}
+			}
+			index = atoi(finalname);
 		}
-		f_close(&data_file);
 	}
+	f_close(&data_file);
 	return index;
 }
 
-uint32_t memcard_manager_get_next(uint8_t* filename, uint8_t* out_nextfile) {
+uint32_t memcard_manager_get_next(uint8_t* filename, uint8_t* out_nextfile, bool skip) {
 	if(!filename || !out_nextfile)
 		return MM_BAD_PARAM;
-	uint32_t count = memcard_manager_count();
-	uint32_t buff_size = (MAX_MC_FILENAME_LEN + 1) * count;
-	uint8_t* image_names = malloc(buff_size);	// allocate space for image names
-	if(!image_names)
-		return MM_ALLOC_FAIL; // malloc failed
 	/* retrive images names */
 	FRESULT res;
 	DIR root;
 	FILINFO f_info;
-	res = f_opendir(&root, "");	// open root directory
-	uint32_t i = 0;
-	if(res == FR_OK) {
-		while(true) {
-			res = f_readdir(&root, &f_info);
-			if(res != FR_OK || f_info.fname[0] == 0) break;
-			if(!(f_info.fattrib & AM_DIR)) {	// not a directory
-				if(is_image_valid(f_info.fname)) {
-					strcpy(&image_names[(MAX_MC_FILENAME_LEN + 1) * i], f_info.fname);
-					++i;
-				}
+	//res = f_opendir(&root, "");	// open root directory
+	char finalname[MAX_MC_FILENAME_LEN + 1];
+	memset(finalname, '\0', MAX_MC_FILENAME_LEN + 1);
+	uint32_t index = atoi(filename);
+	if(skip){
+		index += 5;
+	}else{
+		index++;
+	}
+	sprintf(finalname,"%d",index);
+	strcat(finalname, ".MCR");
+	res = f_stat(finalname, &f_info);
+	if(res == FR_NO_FILE){
+		while(res == FR_NO_FILE){
+			printf("THE MCR DOES NOT EXISTS\n");
+			memset(finalname, '\0', MAX_MC_FILENAME_LEN + 1);
+			index--;
+			if(index < atoi(filename)){
+				return MM_NO_ENTRY;
 			}
+			sprintf(finalname,"%d",index);
+			strcat(finalname, ".MCR");
+			res = f_stat(finalname, &f_info);
 		}
 	}
-	/* sort names alphabetically */
-	qsort(image_names, count, (MAX_MC_FILENAME_LEN + 1), (__compar_fn_t) strcmp);
-	/* find current and return following one */
-	bool found = false;
-	for(uint32_t i = 0; i < buff_size; i = i + (MAX_MC_FILENAME_LEN + 1)) {
-		if(!strcmp(filename, &image_names[i])) {
-			int32_t next_i = i + (MAX_MC_FILENAME_LEN + 1);
-			if(next_i < buff_size) {
-				int32_t new_index = next_i / ((MAX_MC_FILENAME_LEN + 1));
-				update_prev_loaded_memcard_index(new_index);
-				strcpy(out_nextfile, &image_names[next_i]);
-				found = true;
-				break;
-			}
-		}
-	}
-	free(image_names);	// free allocated memory
+	strcpy(out_nextfile, finalname);
+	printf("next mc is: %s", out_nextfile);
 	/* return */
-	if(found)
-		return MM_OK;
-	else
-		return MM_NO_ENTRY;
+	return MM_OK;
 }
 
-uint32_t memcard_manager_get_prev(uint8_t* filename, uint8_t* out_prevfile) {
+uint32_t memcard_manager_get_prev(uint8_t* filename, uint8_t* out_prevfile, bool skip) {
 	if(!filename || !out_prevfile)
 		return MM_BAD_PARAM;
-	uint32_t count = memcard_manager_count();
-	uint32_t buff_size = (MAX_MC_FILENAME_LEN + 1) * count;
-	uint8_t* image_names = malloc(buff_size);	// allocate space for image names
-	if(!image_names)
-		return MM_ALLOC_FAIL; // malloc failed
 	/* retrive images names */
 	FRESULT res;
-	DIR root;
 	FILINFO f_info;
-	res = f_opendir(&root, "");	// open root directory
-	uint32_t i = 0;
-	if(res == FR_OK) {
-		while(true) {
-			res = f_readdir(&root, &f_info);
-			if(res != FR_OK || f_info.fname[0] == 0) break;
-			if(!(f_info.fattrib & AM_DIR)) {	// not a directory
-				if(is_image_valid(f_info.fname)) {
-					strcpy(&image_names[(MAX_MC_FILENAME_LEN + 1) * i], f_info.fname);
-					++i;
-				}
-			}
-		}
+	//res = f_opendir(&root, "");	// open root directory
+	char finalname[MAX_MC_FILENAME_LEN + 1];
+	memset(finalname, '\0', MAX_MC_FILENAME_LEN + 1);
+	uint32_t index = atoi(filename);
+	if(skip){
+		index -= 5;
+	}else{
+		index--;
 	}
-	/* sort names alphabetically */
-	qsort(image_names, count, (MAX_MC_FILENAME_LEN + 1), (__compar_fn_t) strcmp);
-	/* find current and return prior one */
-	bool found = false;
-	for(uint32_t i = 0; i < buff_size; i = i + (MAX_MC_FILENAME_LEN + 1)) {
-		if(!strcmp(filename, &image_names[i])) {
-			int32_t prev_i = i - (MAX_MC_FILENAME_LEN + 1);
-			if(prev_i >= 0) {
-				int32_t new_index = prev_i / (MAX_MC_FILENAME_LEN + 1);
-				update_prev_loaded_memcard_index(new_index);
-				strcpy(out_prevfile, &image_names[prev_i]);
-				found = true;
-				break;
-			}
-		}
+	if(index < 0){
+		index = 0;
 	}
-	free(image_names);	// free allocated memory
-	/* return */
-	if(found)
-		return MM_OK;
-	else
+	sprintf(finalname,"%d",index);
+	strcat(finalname, ".MCR");
+	res = f_stat(finalname, &f_info);
+	if(res == FR_NO_FILE){
+		printf("THE MCR DOES NOT EXISTS\n");
 		return MM_NO_ENTRY;
+	}
+	strcpy(out_prevfile, finalname);
+	printf("prev mc is: %s", out_prevfile);
+	/* return */
+	return MM_OK;
 }
 
 uint32_t memcard_manager_create(uint8_t* out_filename) {
@@ -358,5 +334,134 @@ uint32_t memcard_manager_create(uint8_t* out_filename) {
 		return MM_FILE_OPEN_ERR;
 	}
 	update_prev_loaded_memcard_index(memcard_n - 1);
+	return MM_OK;
+}
+
+uint32_t create_index(uint8_t *vec, uint8_t size, uint8_t *out_filename){
+	uint8_t new_name[MAX_MC_FILENAME_LEN + 1];
+
+	FIL fptr;
+
+	FRESULT fr;
+	fr = f_open(&fptr, "index.txt", FA_OPEN_ALWAYS | FA_READ |FA_WRITE);
+
+	if (fr != FR_OK) {
+		printf("error opening file. Skill issue\n");
+		return FR_DISK_ERR;
+	}
+	else {
+		printf("The file is created Successfully.\n");
+	}
+
+	char data[128];
+	char n_data[128];
+	int ind = 0;
+	--size;
+
+	char lastmem[MAX_MC_FILENAME_LEN + 1];
+
+	//we init the var otherwise it will be dirty as hell
+	memset(data, '\0', 128);
+	memset(new_name, '\0', MAX_MC_FILENAME_LEN + 1);
+	memset(out_filename, '\0', MAX_MC_FILENAME_LEN + 1);
+	memset(lastmem, '\0', MAX_MC_FILENAME_LEN + 1);
+	strcat(data, "\n");
+	bool backslash = false;
+	for(int i = 0; i < size; i++){
+		if(vec[i] == ':'){
+			for(int j = i + 1; j < size; j++){
+
+				// just to eliminate backslash from str
+				if(vec[j] == 92 && backslash == false){
+					backslash = true;
+					continue;
+				}
+				if(vec[j] == ';'){
+					ind++;
+					break;
+				}
+				n_data[ind] = vec[j];
+				ind++;
+			}
+		}
+	}
+
+	strcat(data, n_data);
+	printf("the array is: %s\n", data);
+	
+	// check if the string is \PSIO and if it is we get the hell out of here
+	if(strcmp(n_data, "\\PSIO") == 0 ||strcmp(n_data, "/XSTATION") == 0 || strcmp(n_data, "UNIROM") == 0 || strcmp(n_data, "\\UNIROM_B.EXE") == 0){
+		printf("\nSkipped psio/xstation/UNIROM\n");
+		f_close(&fptr);
+		return 1;
+	}else if(strlen(n_data) < 5){
+		printf("array too short, a comunication error might be occured\n");
+		f_close(&fptr);
+		return 1;
+	}
+
+	if (fr == FR_OK) {
+		char line[256];
+		bool flag = false;
+		ind--;
+		//checks if the ID is already present
+		while (f_gets(line, sizeof(line), &fptr)){
+			if(strncmp(n_data, line, ind) == 0){
+				flag = true;
+				printf("GAMEID already present\n");
+				break;
+			}
+		}
+		//if it is we search the memorycard assigned to it
+		if(flag){
+			if(line[ind] == ':'){
+				int len = 1;
+				char buff[MAX_MC_FILENAME_LEN + 1];
+				memset(buff, '\0', MAX_MC_FILENAME_LEN + 1);
+				ind++;
+				for(int y = 0; y < MAX_MC_FILENAME_LEN + 1; y++){
+					if(line[ind] == '\n'){
+						break;
+					}
+					new_name[y] = line[ind];
+					ind++; 
+				}
+				strcpy(out_filename, new_name);
+
+				//updating lastmemcard id
+				f_rewind(&fptr);
+				strcat(lastmem, "LASTMEMCARD:");
+				sprintf(buff, "%03d", atoi(new_name));
+				strcat(lastmem, buff);
+				strcat(lastmem, ".MCR\n");
+				f_puts(lastmem, &fptr);
+				printf("memcard is: %s\n", out_filename);
+			}else{
+				printf("\n COULD NOT FIND ':' CHAR FIX YOUR INDEX FILE\n");
+				f_close(&fptr);
+				return FR_DISK_ERR;
+			}
+			
+		}
+		//if it is not, then we add the GAMEID with the new MCR file
+		else if(!flag){
+			printf("GAMEID not present, writing to index.txt\n");
+			uint32_t status = memcard_manager_create(new_name);
+			//we concatenate stuff to have a valid id with the memcard
+			
+			strcat(data, ":");
+			strcat(data, new_name);
+			printf("\n what i write: %s", data);
+			f_puts(data, &fptr);
+			strcpy(out_filename, new_name);
+			printf("\n THE NEW MCR IS: %s\n", out_filename);
+		}
+	}else{
+		//this should not happen
+		printf("WE HAVE A HUGE PROBLEM!\n");
+		f_close(&fptr);
+		return FR_DISK_ERR;
+	}
+	f_close(&fptr);
 	return MM_OK;
 }

@@ -11,6 +11,7 @@ PicoMemcard allows you to build your own supercharged PSX Memory Card that can b
 * Allows to play burned CDs (thanks to [FreePSXBoot])
 * Cheaper than an original memory card
 * Can store hudreds of memory card images
+* Switching memory cards using MemcardPro commands with L2/R2
 
 ## Bill of materials
 * **Raspberry Pi Pico** (around $5)
@@ -111,13 +112,18 @@ Inside `docs/images` you can find two memory card images. One has a couple of sa
 ## Switching/Creating Images
 On **PicoMemcard+** you can switch the active memory card image with the following inputs:
 * `START + SELECT + DPAD UP` will switch to the next image (e.g from `1.MCR` to `2.MCR`).
+* `START + SELECT + DPAD RIGHT` will switch to the next image by 5 (e.g from `1.MCR` to `6.MCR`).
 * `START + SELECT + DPAD DOWN` will switch to the previous image (e.g from `1.MCR` to `0.MCR`).
+* `START + SELECT + DPAD LEFT` will switch to the previous image by 5 (e.g from `6.MCR` to `1.MCR`).
 
 Additionally you can create a new empty memory card image (and automatically switch to it) by pressing  `START + SELECT + TRIANGLE`.
 
 **Attention**: this method only works on PSX if the controller used to provide the input is plugged in the same slot as PicoMemcard (exactly under it). Using a controller from a different slot will have no effect.
 
 Additionally this method does not work on PS2 Memory Cards and Controllers are wired on a different bus.
+
+## Game ID
+On **PicoMemcard+** you can switch automatically to a virtual memory card based on the game you are playing, without any input, if you are using an Xstation, Unirom or a patched BIOS.
 
 ## Syncing Changes
 Generally speaking, new data written to PicoMemcard (e.g. when you save) is permanently stored only after a short period of time (due to hardware limitation). The on board LED indicates whether all changes have been stored or not, in particular:
@@ -157,16 +163,20 @@ In particular, the RP2040-Zero has RGB LED that provides a more clear output. Th
 | Data synced | Led on | Green solid led |
 
 ### PicoMemcard+ Status
-| Status | Pico | RP2040-Zero
-| --- | --- | --- |
-| Failed to read SD card | Blinking led  | Red blinking led
-| Data not fully synced (do not turn off PSX)| Led off | Red led (or flashing red and green) |
-| Data synced | Led on | Green solid led |
-| Memory Card image changed | Three fast blinks | Single blue blink |
-| Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink |
-| New Memory Card image created | Multiple very fast blinks | Single light blue blink |
+| Status | Pico | RP2040-Zero | Bitfunx Memory card
+| --- | --- | --- | --- |
+| Failed to read SD card | Blinking led  | Red blinking led | Red blinking led |
+| Data not fully synced (do not turn off PSX)| Led off | Yellow led | Yellow led |
+| Data synced | Led on | Green led | Green led |
+| Memory Card image changed | Three fast blinks | Single blue blink | Single blue blink |
+| Memory Card image not changed (end of list) | Nine fast blinks | Single orange blink | Single purple blink |
+| New Memory Card image created | Multiple very fast blinks | Single light blue blink | Single light blue blink |
 
 ## General Warnings
+This fork has not been tested with a PicoMemcard+ (because i don't have one) but with a Bitfunx Memory card. This version of the firmware may or may not work with your board.
+
+Due to Hardware limitations the Game ID functionality can't detect a disc swap in multidisc game, if you boot the second cd a new memory card will be created without transfering your progress.
+
 I would recommend to never plug PicoMemcard both into the PC (via USB) and the PSX at the same time! Otherwise the 5V provided by USB would end up on the 3.3V rail of the PSX. I'm not really sure if this could cause actual damage but I would avoid risking it.
 
 If you really need to have the Pico plugged into both the USB and PSX (e.g. for debugging purposes), disconnect the 3.3V line from the VBUS pin. In this way you can power on the Pico using a simple USB phone charger or by plugging it into your PC.
@@ -184,6 +194,10 @@ Special thanks to everybody that supported it so far! You are all amazing.
 For people interested in understanding how PicoMemcard works I provide a more extensive explanation in [this post] (although now somewhat outdated).
 
 ## Thanks To
+* [Schermaiolo] - Writing the Game ID write function
+* [SantX27] - Debugging the 1.0.3 firmware to work on the Bitfunx Memory card
+* [whitezombie2000] - Extensive debugging and report of all bugs related to Picomemcard, without him the releases would be way more buggy.
+* [wired-filipino-owl] - Documentation and implementation of the led functionality on the Bitfunx Memory card.
 * [psx-spx] and Martin "NO$PSX" Korth - PlayStation Specifications and documented Memory Card protocol and filesystem.
 * [Andrew J. McCubbin] - Additional information about Memory Card and Controller communication with PSX.
 * [littlefs] - Filesystem designed to work on NOR flash used by many microcontrollers, including the Raspberry Pi Pico.
@@ -191,6 +205,10 @@ For people interested in understanding how PicoMemcard works I provide a more ex
 * [Scoppy] - Use your Raspberry Pi Pico as an oscilloscope, very cheap and accurate. Without this I would have not been able to debug many issues.
 * [PulseView] - Used to import, visualize and manipulate the data from Scoppy on a PC.
 
+[Schermaiolo]: https://github.com/schermaiolo
+[SantX27]: https://github.com/SantX27
+[whitezombie2000]: https://github.com/whitezombie2000
+[wired-filipino-owl]: https://github.com/wired-filipino-owl
 [FreePSXBoot]: https://github.com/brad-lin/FreePSXBoot
 [psx-spx]: https://psx-spx.consoledev.net/pinouts/#controller-ports-and-memory-card-ports
 [Andrew J. McCubbin]: http://www.emudocs.org/PlayStation/psxcont/

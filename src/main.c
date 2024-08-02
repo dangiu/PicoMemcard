@@ -35,7 +35,7 @@ int main(void) {
 		if(to_ms_since_boot(get_absolute_time()) > TUD_MOUNT_TIMEOUT && !tud_mount_status)
 			break;
 	}
-	
+
 	/* Pico powered by PSX, initialize memory card simulation */
 	simulate_memory_card();	
 

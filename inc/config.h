@@ -7,11 +7,13 @@
 #define IDLE_AUTOSYNC_TIMEOUT 5 * 1000		// time (in ms) the memory card must be inactive before automatic sync from RAM to LFS
 #define MAX_MC_FILENAME_LEN	32				// max length of memory card file name (including extension)
 #define MAX_MC_IMAGES	255					// maximum number of different mc images
-#define MC_RECONNECT_TIME	1000				// time (in ms) the memory card stays disconnected when simulating reconnection
+#define MC_RECONNECT_TIME	250				// time (in ms) the memory card stays disconnected when simulating reconnection
 
 /* Board targeted by build */
-#define PICO
+//#define PICO
 //#define RP2040ZERO
+#define BITFUNX
+#define GAMEID
 
 /* Invert red and green. Uncomment this if the LED colours for your RP2040 Zero are incorrect. */
 #define INVERT_RED_GREEN
@@ -33,6 +35,14 @@
 	#define PIN_ACK 13
 #endif
 
+#ifdef BITFUNX
+	//#define PIN_DAT 5
+	//#define PIN_CMD PIN_DAT + 1		// must be immediately after PIN_DAT
+	//#define PIN_SEL PIN_CMD + 1		// must be immediately after PIN_CMD
+	//#define PIN_CLK PIN_SEL + 1		// must be immediately after PIN_SEL
+	//#define PIN_ACK 9
+#endif
+
 /* SD Card Configuration */
 #define BLOCK_SIZE	512				// SD card communicate using only 512 block size for consistency
 #define BAUD_RATE	5000 * 1000
@@ -48,6 +58,13 @@
 	#define PIN_MOSI	3
 	#define PIN_SCK		2
 	#define PIN_SS		1
+#endif
+
+#ifdef BITFUNX
+	#define PIN_MISO	16
+	#define PIN_MOSI	19
+	#define PIN_SCK		18
+	#define PIN_SS		17
 #endif
 
 #endif

@@ -14,6 +14,12 @@
 #define PICO_LED_PIN 25
 #endif
 
+#ifdef BITFUNX
+#define PICO_RED_PIN 25
+#define PICO_GRN_PIN 24
+#define PICO_BLU_PIN 23
+#endif
+
 static uint smWs2813;
 static uint offsetWs2813;
 static int32_t picoW = -1;
@@ -34,19 +40,27 @@ void ws2812_put_rgb(uint8_t red, uint8_t green, uint8_t blue) {
 #endif
 
 void led_init() {
-  #ifdef PICO
-  if (is_pico_w()) {
-    if (cyw43_arch_init()) {
-      picoW = 0;
-    }
-  }
-  init_led(PICO_LED_PIN);
-  #endif
-	#ifdef RP2040ZERO
-	offsetWs2813 = pio_add_program(pio1, &ws2812_program);
-	smWs2813 = pio_claim_unused_sm(pio1, true);
-	ws2812_program_init(pio1, smWs2813, offsetWs2813, 16, 800000, true);
+   	#ifdef PICO
+   	if (is_pico_w()) {
+     	if (cyw43_arch_init()) {
+       	picoW = 0;
+     	}
+   	}
+   	init_led(PICO_LED_PIN);
 	#endif
+	#ifdef RP2040ZERO
+ 	offsetWs2813 = pio_add_program(pio1, &ws2812_program);
+ 	smWs2813 = pio_claim_unused_sm(pio1, true);
+ 	ws2812_program_init(pio1, smWs2813, offsetWs2813, 16, 800000, true);
+ 	#endif
+	#ifdef BITFUNX
+        gpio_init(PICO_RED_PIN);
+        gpio_init(PICO_GRN_PIN);
+        gpio_init(PICO_BLU_PIN);
+        gpio_set_dir(PICO_RED_PIN, GPIO_OUT); 
+        gpio_set_dir(PICO_GRN_PIN, GPIO_OUT); 
+        gpio_set_dir(PICO_BLU_PIN, GPIO_OUT); 
+    #endif
 }
 
 void led_output_sync_status(bool out_of_sync) {
@@ -61,6 +75,20 @@ void led_output_sync_status(bool out_of_sync) {
 		ws2812_put_rgb(0, 255, 0);
 	}
 	#endif
+	#ifdef BITFUNX
+    if(out_of_sync) {
+            //yellow
+            gpio_put(PICO_RED_PIN, 1);
+            gpio_put(PICO_GRN_PIN, 1);
+            gpio_put(PICO_BLU_PIN, 0);
+    }
+    else {
+            //green
+            gpio_put(PICO_RED_PIN, 0);
+            gpio_put(PICO_GRN_PIN, 1);
+            gpio_put(PICO_BLU_PIN, 0);
+    }
+    #endif
 }
 
 void led_blink_error(int amount) {
@@ -71,6 +99,11 @@ void led_blink_error(int amount) {
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(0, 0, 0);
 	#endif
+	#ifdef BITFUNX
+    gpio_put(PICO_RED_PIN, 0);
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 0);
+    #endif
 	sleep_ms(500);
 	/* start blinking */
 	for(int i = 0; i < amount; ++i) {
@@ -80,13 +113,23 @@ void led_blink_error(int amount) {
 		#ifdef RP2040ZERO
 		ws2812_put_rgb(255, 0, 0);
 		#endif
+		#ifdef BITFUNX
+        gpio_put(PICO_RED_PIN, 1);
+        gpio_put(PICO_GRN_PIN, 0);
+        gpio_put(PICO_BLU_PIN, 0);
+        #endif
 		sleep_ms(500);
 		#ifdef PICO
 		set_led(PICO_LED_PIN, false);
 		#endif
 		#ifdef RP2040ZERO
-		ws2812_put_rgb(0, 0, 0);
+	 	ws2812_put_rgb(0, 0, 0);
 		#endif
+		#ifdef BITFUNX
+        gpio_put(PICO_RED_PIN, 0);
+        gpio_put(PICO_GRN_PIN, 0);
+        gpio_put(PICO_BLU_PIN, 0);
+        #endif
 		sleep_ms(500);
 	}
 }
@@ -105,6 +148,15 @@ void led_output_mc_change() {
 	sleep_ms(100);
 	ws2812_put_rgb(0, 0, 0);
 	#endif
+	#ifdef BITFUNX
+    gpio_put(PICO_RED_PIN, 0);  // blue
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 1);
+	sleep_ms(100);
+    gpio_put(PICO_RED_PIN, 0);
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 0);
+    #endif
 }
 
 void led_output_end_mc_list() {
@@ -123,6 +175,15 @@ void led_output_end_mc_list() {
 	sleep_ms(500);
 	ws2812_put_rgb(0, 0, 0);
 	#endif
+	#ifdef BITFUNX
+    gpio_put(PICO_RED_PIN, 1);      // purple
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 1);
+    sleep_ms(500);
+    gpio_put(PICO_RED_PIN, 0);
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 0);
+    #endif
 }
 
 void led_output_new_mc() {
@@ -141,11 +202,21 @@ void led_output_new_mc() {
 	sleep_ms(1000);
     ws2812_put_rgb(0, 0, 0);
 	#endif
+	#ifdef BITFUNX
+    gpio_put(PICO_RED_PIN, 0);      // teal
+    gpio_put(PICO_GRN_PIN, 1);
+    gpio_put(PICO_BLU_PIN, 1);
+    sleep_ms(1000);
+    gpio_put(PICO_RED_PIN, 0);
+    gpio_put(PICO_GRN_PIN, 0);
+    gpio_put(PICO_BLU_PIN, 0);
+    #endif
 }
 
 // Attempt to check if device is a Raspberry Pi Pico W
 // Based on https://forums.raspberrypi.com/viewtopic.php?t=336884
 int32_t is_pico_w() {
+	#ifdef PICO
   if (picoW == -1) {
     // When the VSYS_ADC is read on a Pico it will always be > 1V
     // On a Pico-W it will be < 1V when GPIO25 is low
@@ -173,8 +244,14 @@ int32_t is_pico_w() {
     }
   }
   return picoW;
+  #endif
+  
+  #ifdef BITFUNX
+  return 0;
+  #endif
 }
 
+#ifdef PICO
 void init_led(uint32_t pin) {
   if (!is_pico_w() || (pin != 25)) {
     gpio_init(pin);
@@ -182,7 +259,7 @@ void init_led(uint32_t pin) {
   }
 }
 
-#ifdef PICO
+
 void set_led(uint32_t pin, uint32_t level) {
   if ((pin == 25) && is_pico_w()) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, level);

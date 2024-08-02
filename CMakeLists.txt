@@ -19,6 +19,9 @@ add_definitions(-DNO_PICO_LED)  # prevent SD SPI library from using LED
 add_subdirectory(no-OS-FatFS-SD-SPI-RPi-Pico/FatFs_SPI PicoMemcard)
 add_subdirectory(poc_examples)
 
+#optimization flag
+add_compile_options(-O2)
+
 # Example source
 target_sources(PicoMemcard PUBLIC
     ${CMAKE_SOURCE_DIR}/src/led.c
