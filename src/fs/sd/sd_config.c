@@ -1,5 +1,5 @@
 #include <string.h>
-#include "sd_config.h"
+#include "fs/sd/sd_config.h"
 #include "ff.h" 
 #include "diskio.h"
 #include "config.h"
@@ -13,11 +13,8 @@ static spi_t spis[] = {
     .mosi_gpio = PIN_MOSI,
     .sck_gpio = PIN_SCK,
     .baud_rate = BAUD_RATE,   
-
-    .dma_isr = spi0_dma_isr
 }};
 
-void spi0_dma_isr() { spi_irq_handler(&spis[0]); }
 
 static sd_card_t sd_cards[] = {
     {

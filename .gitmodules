@@ -1,3 +1,6 @@
-[submodule "no-OS-FatFS-SD-SPI-RPi-Pico"]
-	path = no-OS-FatFS-SD-SPI-RPi-Pico
+[submodule "fs/deps/littlefs"]
+	path = deps/littlefs
+	url = https://github.com/littlefs-project/littlefs.git
+[submodule "deps/no-OS-FatFS-SD-SPI-RPi-Pico"]
+	path = deps/no-OS-FatFS-SD-SPI-RPi-Pico
 	url = https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico.git

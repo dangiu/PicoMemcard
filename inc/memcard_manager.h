@@ -16,6 +16,7 @@
 
 bool memcard_manager_exist(uint8_t* filename);
 uint32_t memcard_manager_count();
+uint32_t memcard_manager_count_with_err_size();
 uint32_t memcard_manager_get(uint32_t index, uint8_t* out_filename);
 #define memcard_manager_get_initial(out_filename) memcard_manager_get(memcard_manager_get_prev_loaded_memcard_index(), (out_filename))
 uint32_t memcard_manager_get_prev_loaded_memcard_index();

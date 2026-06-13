@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "memcard_simulator.h"
 #include "stdio.h"
 #include "pico/multicore.h"
@@ -6,11 +7,12 @@
 #include "pico/util/queue.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
+#include "hardware/structs/iobank0.h" // iobank0_hw
 #include "psxSPI.pio.h"
 #include "memory_card.h"
-#include "sd_config.h"
+#include "fs/fs.h"
+#include "ff.h"
 #include "memcard_manager.h"
-#include "config.h"
 #include "pad.h"
 #include "led.h"
 
@@ -212,13 +214,18 @@ void process_pad_cmd() {    /* during pad interaction never call SEND() only int
     uint16_t sw_status = RECV_DAT();
     sw_status |= RECV_DAT() << 8;
     switch(sw_status) {
-        case START & SELECT & UP:
+        case L1 & L2 & R1 & R2 & UP:
+        case L1 & L2 & R1 & R2 & RIGHT:
+        case START & SELECT & UP:  // The initial combination of the author. For me it wasn't easier with the L+R buttons
+                                // as the MC i used to have as a kid had that key binding
             request_next_mc = true;
             break;
+        case L1 & L2 & R1 & R2 & DOWN:
+        case L1 & L2 & R1 & R2 & LEFT:
         case START & SELECT & DOWN:
             request_prev_mc = true;
             break;
-        case START & SELECT & TRIANGLE:
+        case L1 & L2 & R1 & R2 & TRIANGLE:
             request_new_mc = true;
             break;
         default:
@@ -255,9 +262,11 @@ void __time_critical_func(restart_pio_sm)(void) {
     pio_sm_clear_fifos(pio0, smDatReader);
     pio_sm_drain_tx_fifo(pio0, smDatWriter); // drain instead of clear, so that we empty the OSR
 
+    #ifdef MULTICORE
     // resetting and launching core1 here allows to perform the reset of the transaction (e.g. when PSX polls for new MC without completing the read)
     multicore_reset_core1();
     multicore_launch_core1(simulation_thread);
+    #endif
     pio_enable_sm_mask_in_sync(pio0, 1 << smCmdReader | 1 << smDatReader | 1 << smDatWriter);
 }
 
@@ -303,19 +312,115 @@ void queue_sync_step(queue_t* queue, uint8_t* mc_file_name) {
         led_blink_error(status);
 }
 
+static int set_mc_colour(char *filename) {
+	int	index = (int)strtol(filename, (char**)NULL, 10) % NCOLORS;
+    rgb_t c;
+    
+    switch(index) {
+        case 1: c = COLOR_CYAN; break;
+        case 2: c = COLOR_BLUE; break;
+        case 3: c = COLOR_YELLOW; break;
+        case 4: c = COLOR_MAGENTA; break;
+        default: c = COLOR_GREEN; break;
+    }
+    set_led_color(&c);
+}
+
+static void flush_operations(char *mc_file_name) {
+    /*
+        If there are pending sync-operations in the RAM-copy of the MC,
+        unqueue them to copy to the persistent storage.
+    */
+    while(!queue_is_empty(&mc_sector_sync_queue)) {
+        queue_sync_step(&mc_sector_sync_queue, mc_file_name);
+    }
+    
+    if(fs_manager.try_flush) fs_manager.try_flush(mc_file_name);
+    led_output_sync_status(false);
+}
+
+static void process_user_input(char *mc_file_name) {
+    uint32_t status;
+
+    /*
+        This operations are really slow as the access the sd/flash memory
+
+        - request_next_mc: E.g. change from 1.MCR to 2.MCR
+        - request_prev_mc: E.g. change from 8.MCR to 7.MCR
+        - request_new_mc: Create a new MC image
+    */
+    if(request_next_mc || request_prev_mc) {
+        if(request_next_mc && request_prev_mc) {
+            /* requested change in both directions, do nothing */
+            request_next_mc = false;
+            request_prev_mc = false;
+        } else {
+            uint8_t new_file_name[MAX_MC_FILENAME_LEN + 1];
+            if(request_next_mc)
+                status = memcard_manager_get_next(mc_file_name, new_file_name);
+            else if (request_prev_mc)
+                status = memcard_manager_get_prev(mc_file_name, new_file_name);
+            if(status != MM_OK) {
+                led_output_end_mc_list();
+                request_next_mc = false;
+                request_prev_mc = false;
+            } else {
+                mutex_enter_blocking(&write_transaction);
+                /* ensure latest write operations have been synced */
+                led_output_sync_status(true);
+                while(!queue_is_empty(&mc_sector_sync_queue))
+                    queue_sync_step(&mc_sector_sync_queue, mc_file_name);
+                led_output_sync_status(false);
+                /* switch mc */
+                strcpy(mc_file_name, new_file_name);
+                status = memory_card_import(&mc, mc_file_name);
+                if(status != MC_OK)
+                    led_blink_error(status);
+                simulate_mc_reconnect();
+                request_next_mc = false;
+                request_prev_mc = false;
+                mutex_exit(&write_transaction);
+                set_mc_colour(mc_file_name);
+            }
+        }
+    } else if(request_new_mc) {
+            mutex_enter_blocking(&write_transaction);
+            /* ensure latest write operations have been synced */
+            led_output_sync_status(true);
+            while(!queue_is_empty(&mc_sector_sync_queue))
+                queue_sync_step(&mc_sector_sync_queue, mc_file_name);
+            led_output_sync_status(false);
+            /* create new mc */
+            uint8_t new_name[MAX_MC_FILENAME_LEN + 1];
+            status = memcard_manager_create(new_name);
+            if(status == MM_OK) {
+                led_output_new_mc();
+                strcpy(mc_file_name, new_name);
+                status = memory_card_import(&mc, mc_file_name);	// switch to newly created mc image
+                if(status != MC_OK)
+                    led_blink_error(status);
+                set_mc_colour(mc_file_name);
+            } else
+                led_blink_error(status);
+            simulate_mc_reconnect();
+            request_new_mc = false;
+            mutex_exit(&write_transaction);
+    }
+}
+
 _Noreturn int simulate_memory_card() {
 	mutex_init(&write_transaction);
 	queue_init(&mc_sector_sync_queue, sizeof(sector_t), MC_SEC_COUNT);	// enough space to do complete MC copy
 	uint8_t mc_file_name[MAX_MC_FILENAME_LEN + 1];	// +1 for null terminator character
 
 	/* Mount and test SD card filesystem */
-	sd_card_t *p_sd = sd_get_by_num(0);
-	if(FR_OK != f_mount(&p_sd->fatfs, "", 1)) {
+	uint32_t status = fs_manager.mount(0);
+	if(FR_OK != status) {
 		while(true)
 			led_blink_error(1);
 	}
 
-    uint32_t status = memory_card_init(&mc);
+    status = memory_card_init(&mc);
 	if(status != MC_OK) {
 		while(true) {
 			led_blink_error(status);
@@ -325,7 +430,15 @@ _Noreturn int simulate_memory_card() {
 	status = memcard_manager_get_initial(mc_file_name);	// get initial memory card to load
 	if(status != MM_OK) {
 		status = memcard_manager_get(0, mc_file_name);	// revert to first mem card if failing to load previously loaded card
-		if(status != MM_OK) {
+		if(status == MM_INDEX_OUT_OF_BOUNDS) {
+		// If this is the first time the program runs and there is no MC image -> Create it
+		// Take into account that if a file is corrupted... we may want not to delete it.
+            if(memcard_manager_count_with_err_size() == 0) {
+                status = memcard_manager_create(mc_file_name);
+            } 
+        }
+
+	    if(status != MM_OK) {
 			while(true) {
 				led_blink_error(status);
 				sleep_ms(1000);
@@ -339,6 +452,7 @@ _Noreturn int simulate_memory_card() {
 			sleep_ms(2000);
 		}
 	}
+    set_mc_colour(mc_file_name);
 
     printf("Initializing PIO...");
     init_pio();
@@ -357,72 +471,48 @@ _Noreturn int simulate_memory_card() {
     /* SMs are automatically enabled on first SEL reset */
 
 	/* Launch memory card thread */
+    #ifdef MULTICORE
     printf("Starting simulation core...");
 	multicore_launch_core1(simulation_thread);
     printf("  done\n");
+    #endif
 
     /* Process sync/switch/creation requests */
+    #ifndef MULTICORE
+    bool recent_operation = false;
+    uint64_t last_operation = 0;
+    uint64_t now = 0;
+    uint64_t timeout_us = 5*1000; // 5 ms
+    #endif
+
 	while(true) {
-		if(!queue_is_empty(&mc_sector_sync_queue)) {
-			led_output_sync_status(true);
-            queue_sync_step(&mc_sector_sync_queue, mc_file_name);
-		} else {
-			led_output_sync_status(false);
-		}
-		if(request_next_mc || request_prev_mc) {
-			if(request_next_mc && request_prev_mc) {
-				/* requested change in both directions, do nothing */
-				request_next_mc = false;
-				request_prev_mc = false;
-			} else {
-				uint8_t new_file_name[MAX_MC_FILENAME_LEN + 1];
-				if(request_next_mc)
-					status = memcard_manager_get_next(mc_file_name, new_file_name);
-				else if (request_prev_mc)
-					status = memcard_manager_get_prev(mc_file_name, new_file_name);
-				if(status != MM_OK) {
-					led_output_end_mc_list();
-					request_next_mc = false;
-					request_prev_mc = false;
-				} else {
-                    mutex_enter_blocking(&write_transaction);
-                    /* ensure latest write operations have been synced */
-                    led_output_sync_status(true);
-                    while(!queue_is_empty(&mc_sector_sync_queue))
-                        queue_sync_step(&mc_sector_sync_queue, mc_file_name);
-                    led_output_sync_status(false);
-                    /* switch mc */
-                    strcpy(mc_file_name, new_file_name);
-                    status = memory_card_import(&mc, mc_file_name);
-                    if(status != MC_OK)
-                        led_blink_error(status);
-                    simulate_mc_reconnect();
-                    request_next_mc = false;
-                    request_prev_mc = false;
-                    mutex_exit(&write_transaction);
-				}
-			}
-		} else if(request_new_mc) {
-				mutex_enter_blocking(&write_transaction);
-                /* ensure latest write operations have been synced */
-                led_output_sync_status(true);
-                while(!queue_is_empty(&mc_sector_sync_queue))
-                    queue_sync_step(&mc_sector_sync_queue, mc_file_name);
-                led_output_sync_status(false);
-                /* create new mc */
-                uint8_t new_name[MAX_MC_FILENAME_LEN + 1];
-                status = memcard_manager_create(new_name);
-                if(status == MM_OK) {
-                    led_output_new_mc();
-                    strcpy(mc_file_name, new_name);
-                    status = memory_card_import(&mc, mc_file_name);	// switch to newly created mc image
-                    if(status != MC_OK)
-                        led_blink_error(status);
-                } else
-                    led_blink_error(status);
-                simulate_mc_reconnect();
-                request_new_mc = false;
-                mutex_exit(&write_transaction);
-		}
+        #ifndef MULTICORE
+        /*
+            If multicore, this is processed in the simulation_thread.
+
+            This block basically process requests from the PSX.
+            If there is a request, wait some ms before performing other operations, such
+            as writing to persistent storage/blink the led/etc... as there is a risk that we 
+            may timeout the next bytes/commands.
+
+            So, in other words, act quickly inside this block and, when the console is idle,
+            go for other operations.
+        */
+        uint8_t data;
+        do {
+            // read_byte is not blocking. If 0, we will exit and no further iterate
+            // on the while until the next time the user pushes some button/save the game.
+            while(read_byte(pio0, smCmdReader, &data)) {
+                process_cmd(data);
+                last_operation = time_us_64();
+            }
+            now = time_us_64();
+            recent_operation = (now - last_operation) <= timeout_us;
+        } while(recent_operation);
+        last_operation = now;
+        #endif
+
+        flush_operations(mc_file_name);
+        process_user_input(mc_file_name);
 	}
 }

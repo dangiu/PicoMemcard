@@ -1,7 +1,9 @@
 #include "bsp/board.h"
 #include "tusb.h"
 #include "config.h"
-#include "sd_config.h"
+#include "fs/sd/sd_config.h"
+#include "fs/fs.h"
+#include "diskio.h"
 
 #define VID "PicoMC"
 #define PID "Mass Storage"
@@ -11,7 +13,7 @@
 /* invoked when received SCSI_CMD_INQUIRY */
 void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4])
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
+	sd_card_t* p_sd = (sd_card_t*) fs_manager.get_by_num(lun);
 	if (!p_sd) return;
 
 	const char vid[] = VID;
@@ -26,10 +28,10 @@ void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16
 /* invoked when received Test Unit Ready command */
 bool tud_msc_test_unit_ready_cb(uint8_t lun)
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
+	sd_card_t* p_sd = (sd_card_t*) fs_manager.get_by_num(lun);
 	if (!p_sd) return false;
 
-	if(p_sd->m_Status != 0) {
+	if(!fs_manager.ready(p_sd)) {
 		// Additional Sense 3A-00 is NOT_FOUND
 		tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0x00);
 		return false;
@@ -41,11 +43,11 @@ bool tud_msc_test_unit_ready_cb(uint8_t lun)
 /* invoked when received SCSI_CMD_READ_CAPACITY_10 and SCSI_CMD_READ_FORMAT_CAPACITY to determine the disk size */
 void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t* block_size)
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
+	sd_card_t* p_sd = (sd_card_t*) fs_manager.get_by_num(lun);
 	if (!p_sd) return;
 
-	*block_count = (uint32_t) p_sd->sectors;
-	*block_size  = (uint16_t) BLOCK_SIZE;
+	*block_count = (uint32_t) fs_manager.get_sectors(lun);
+	*block_size  = (uint16_t) fs_manager.get_block_size(lun);
 }
 
 /*
@@ -57,35 +59,23 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, boo
 {
 	(void) power_condition;
 
-	if ( load_eject )
-	{
-		if(start) {
-			return true;
-		}
-	}
-
-	return true;
+	return fs_manager.startstop(start, load_eject);
 }
 
 /* callback invoked when received READ10 command */
 int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize)
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
-	if (!p_sd) return -1;							// not valid drive
-
-	if(lba < 0 || lba >= p_sd->sectors) return -1;	// invalid sector
-	if(bufsize != BLOCK_SIZE) return -1;			// invalid transfer unit
+	if(bufsize != fs_manager.get_block_size(lun)) return -1;			// invalid transfer unit
+	if(lba < 0 || lba >= fs_manager.get_sectors(lun)) return -1;	// invalid sector
 	if(offset != 0) return -1;						// cannot read unaligned sectors
 
-	int status = sd_read_blocks(p_sd, (uint8_t*) buffer, (uint64_t) lba, 1);
-	if(status != SD_BLOCK_DEVICE_ERROR_NONE) return -1;		// read failed
-
-	return (int32_t) bufsize;
+	int status = disk_read(lun, (uint8_t*) buffer, (uint64_t) lba, 1);
+	return status ? -1 : bufsize;		// read failed?
 }
 
 bool tud_msc_is_writable_cb (uint8_t lun)
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
+	sd_card_t* p_sd = (sd_card_t*) fs_manager.get_by_num(lun);
 	if (!p_sd) return false;
 	return true;
 }
@@ -94,17 +84,12 @@ bool tud_msc_is_writable_cb (uint8_t lun)
 // Process data in buffer to disk's storage and return number of written bytes
 int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize)
 {
-	sd_card_t* p_sd = sd_get_by_num(lun);
-	if (!p_sd) return -1;							// not valid drive
-
-	if(lba < 0 || lba >= p_sd->sectors) return -1;	// invalid sector
-	if(bufsize != BLOCK_SIZE) return -1;			// invalid transfer unit
+	if(lba < 0 || lba >= fs_manager.get_sectors(lun)) return -1;	// invalid sector
+	if(bufsize != fs_manager.get_block_size(lun)) return -1;			// invalid transfer unit
 	if(offset != 0) return -1;						// writes must be sector aligned
 
-	int status = sd_write_blocks(p_sd, buffer, lba, 1);
-	if(status != SD_BLOCK_DEVICE_ERROR_NONE) return -1;		// write failed
-
-	return (int32_t) bufsize;
+	int status = disk_write(lun, (uint8_t*) buffer, (uint64_t) lba, 1);
+	return status ? -1 : bufsize;		// write failed?
 }
 
 /*

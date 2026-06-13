@@ -10,9 +10,6 @@
 #include "ws2812.pio.h"
 #endif
 
-#ifdef PICO
-#define PICO_LED_PIN 25
-#endif
 
 static uint smWs2813;
 static uint offsetWs2813;
@@ -26,7 +23,7 @@ void ws2812_put_pixel(uint32_t pixel_grb) {
 void ws2812_put_rgb(uint8_t red, uint8_t green, uint8_t blue) {
 	#ifdef INVERT_RED_GREEN
 	uint32_t mask = (red << 16) | (green << 8) | (blue << 0);
-	#elif
+	#else
 	uint32_t mask = (green << 16) | (red << 8) | (blue << 0);
 	#endif
 	ws2812_put_pixel(mask);
@@ -40,33 +37,42 @@ void led_init() {
       picoW = 0;
     }
   }
-  init_led(PICO_LED_PIN);
+  #endif
+  #if defined(PICO) || defined(RP2040PROMICRO)
+  init_led(LED_PIN);
   #endif
 	#ifdef RP2040ZERO
 	offsetWs2813 = pio_add_program(pio1, &ws2812_program);
 	smWs2813 = pio_claim_unused_sm(pio1, true);
-	ws2812_program_init(pio1, smWs2813, offsetWs2813, 16, 800000, true);
+	ws2812_program_init(pio1, smWs2813, offsetWs2813, PICO_DEFAULT_WS2812_PIN, 800000, true);
 	#endif
 }
 
+static rgb_t cur_color = COLOR_GREEN;
+void set_led_color(rgb_t *color) {
+	cur_color.r = color->r;
+	cur_color.g = color->g;
+	cur_color.b = color->b;
+}
+
 void led_output_sync_status(bool out_of_sync) {
-	#ifdef PICO
-	set_led(PICO_LED_PIN, !out_of_sync);
+	#if defined(PICO) || defined(RP2040PROMICRO)
+	set_led(LED_PIN, !out_of_sync);
 	#endif
 	#ifdef RP2040ZERO
 	if(out_of_sync) {
 		ws2812_put_rgb(255, 0, 0);
 		sleep_ms(25);
 	} else {
-		ws2812_put_rgb(0, 255, 0);
+		ws2812_put_rgb(cur_color.r, cur_color.g, cur_color.b);
 	}
 	#endif
 }
 
 void led_blink_error(int amount) {
 	/* ensure led is off */
-	#ifdef PICO
-	set_led(PICO_LED_PIN, false);
+	#if defined(PICO) || defined(RP2040PROMICRO)
+	set_led(LED_PIN, false);
 	#endif
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(0, 0, 0);
@@ -74,15 +80,15 @@ void led_blink_error(int amount) {
 	sleep_ms(500);
 	/* start blinking */
 	for(int i = 0; i < amount; ++i) {
-		#ifdef PICO
-		set_led(PICO_LED_PIN, true);
+		#if defined(PICO) || defined(RP2040PROMICRO)
+		set_led(LED_PIN, true);
 		#endif
 		#ifdef RP2040ZERO
 		ws2812_put_rgb(255, 0, 0);
 		#endif
 		sleep_ms(500);
-		#ifdef PICO
-		set_led(PICO_LED_PIN, false);
+		#if defined(PICO) || defined(RP2040PROMICRO)
+		set_led(LED_PIN, false);
 		#endif
 		#ifdef RP2040ZERO
 		ws2812_put_rgb(0, 0, 0);
@@ -92,12 +98,12 @@ void led_blink_error(int amount) {
 }
 
 void led_output_mc_change() {
-	#ifdef PICO
-	set_led(PICO_LED_PIN, false);
+	#if defined(PICO) || defined(RP2040PROMICRO)
+	set_led(LED_PIN, false);
 	sleep_ms(100);
-	set_led(PICO_LED_PIN, true);
+	set_led(LED_PIN, true);
 	sleep_ms(100);
-	set_led(PICO_LED_PIN, false);
+	set_led(LED_PIN, false);
 	sleep_ms(100);
 	#endif
 	#ifdef RP2040ZERO
@@ -108,13 +114,13 @@ void led_output_mc_change() {
 }
 
 void led_output_end_mc_list() {
-	#ifdef PICO
+	#if defined(PICO) || defined(RP2040PROMICRO)
 	for(int i = 0; i < 3; ++i) {
-		set_led(PICO_LED_PIN, false);
+		set_led(LED_PIN, false);
 		sleep_ms(100);
-		set_led(PICO_LED_PIN, true);
+		set_led(LED_PIN, true);
 		sleep_ms(100);
-		set_led(PICO_LED_PIN, false);
+		set_led(LED_PIN, false);
 		sleep_ms(100);
 	}
 	#endif
@@ -126,19 +132,19 @@ void led_output_end_mc_list() {
 }
 
 void led_output_new_mc() {
-	#ifdef PICO
-	for(int i = 0; i < 10; ++i) {
-		set_led(PICO_LED_PIN, false);
-		sleep_ms(50);
-		set_led(PICO_LED_PIN, true);
-		sleep_ms(50);
-		set_led(PICO_LED_PIN, false);
-		sleep_ms(50);
+	#if defined(PICO) || defined(RP2040PROMICRO)
+	for(int i = 0; i < 2; ++i) {
+		set_led(LED_PIN, false);
+		sleep_ms(2);
+		set_led(LED_PIN, true);
+		sleep_ms(2);
+		set_led(LED_PIN, false);
+		sleep_ms(2);
 	}
 	#endif
 	#ifdef RP2040ZERO
 	ws2812_put_rgb(52, 171, 235);	// light blue
-	sleep_ms(1000);
+	sleep_ms(5);
     ws2812_put_rgb(0, 0, 0);
 	#endif
 }
@@ -182,11 +188,14 @@ void init_led(uint32_t pin) {
   }
 }
 
-#ifdef PICO
+#if defined(PICO) || defined(RP2040PROMICRO)
 void set_led(uint32_t pin, uint32_t level) {
+  #ifdef PICO
   if ((pin == 25) && is_pico_w()) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, level);
-  } else {
+  } else 
+  #endif
+  {
     gpio_put(pin, level);
   }
 }

@@ -2,11 +2,11 @@
 ;	Interfaces with the modified SPI protocol used by
 ;	PSX to communicate with controller/memory cards
 
-.define PUBLIC PIN_DAT 5
-.define PUBLIC PIN_CMD 6
-.define PUBLIC PIN_SEL 7
-.define PUBLIC PIN_CLK 8
-.define PUBLIC PIN_ACK 9
+.define PUBLIC PIN_DAT @PIN_DAT@
+.define PUBLIC PIN_CMD @PIN_CMD@
+.define PUBLIC PIN_SEL @PIN_SEL@
+.define PUBLIC PIN_CLK @PIN_CLK@
+.define PUBLIC PIN_ACK @PIN_ACK@
 
 .program cmd_reader
 ; Input pins mapping:
@@ -145,6 +145,14 @@ static inline void dat_writer_program_init(PIO pio, uint sm, uint offset) {
 
 static inline uint8_t read_byte_blocking(PIO pio, uint sm) {
 	return (uint8_t) (pio_sm_get_blocking(pio, sm) >> 24);
+}
+
+static inline uint8_t read_byte(PIO pio, uint sm, uint8_t *data) {
+	if (!pio_sm_is_rx_fifo_empty(pio0, sm)) {
+		*data = (uint8_t)(pio_sm_get(pio0, sm) >> 24);
+		return 1;	
+	}
+	return 0;
 }
 
 static inline void write_byte_blocking(PIO pio, uint sm, uint32_t byte) {
